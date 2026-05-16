@@ -81,13 +81,20 @@ export const balances = pgTable(
     lockedAmountMicro: bigint("locked_amount_micro", { mode: "bigint" })
       .notNull()
       .default(sql`0`),
+    creditLimitMicro: bigint("credit_limit_micro", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
   },
   (table) => [
     unique("balances_user_currency_unique").on(table.userId, table.currency),
-    check("balances_available_nonnegative", sql`${table.availableAmountMicro} >= 0`),
     check("balances_locked_nonnegative", sql`${table.lockedAmountMicro} >= 0`),
+    check("balances_credit_limit_nonnegative", sql`${table.creditLimitMicro} >= 0`),
+    check(
+      "balances_available_credit_limit",
+      sql`${table.availableAmountMicro} >= -${table.creditLimitMicro}`,
+    ),
   ],
 );
 

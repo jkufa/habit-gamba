@@ -11,7 +11,6 @@ export type DbClientOptions = {
 export function createDbClient(options: DbClientOptions) {
   const sql = postgres(options.databaseUrl, {
     max: options.max ?? 10,
-    transform: postgres.camel,
   });
 
   return {

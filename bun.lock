@@ -66,6 +66,10 @@
     },
     "packages/wallet": {
       "name": "@habit-gamba/wallet",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
     },
   },
   "packages": {
