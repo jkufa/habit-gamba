@@ -55,12 +55,29 @@
     },
     "packages/exchange": {
       "name": "@habit-gamba/exchange",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
     },
     "packages/notification": {
       "name": "@habit-gamba/notification",
     },
     "packages/qa": {
       "name": "@habit-gamba/qa",
+      "bin": {
+        "qa": "./src/cli.ts",
+      },
+      "dependencies": {
+        "@habit-gamba/contracts": "workspace:*",
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/exchange": "workspace:*",
+        "@habit-gamba/users": "workspace:*",
+        "@habit-gamba/wallet": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "postgres": "^3.4.7",
+      },
     },
     "packages/resolution": {
       "name": "@habit-gamba/resolution",

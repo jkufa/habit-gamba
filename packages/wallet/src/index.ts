@@ -1,6 +1,6 @@
 export { getBalance, setRepCreditLimit } from "./lib/balance";
 export { IdempotencyConflictError, InsufficientFundsError } from "./lib/errors";
-export { checkRepLedgerInvariant } from "./lib/__testing__/invariants";
+export { checkRepLedgerInvariant, checkWalletInvariant } from "./lib/__testing__/invariants";
 export type {
   RepBalance,
   RepLedgerInvariantMismatch,

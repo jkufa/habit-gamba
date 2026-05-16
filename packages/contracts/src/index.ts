@@ -11,6 +11,7 @@ export {
   resolveMarket,
   voidMarket,
 } from "./lib/lifecycle";
+export { checkMarketLifecycleInvariant } from "./lib/__testing__/invariants";
 export { getMarketById, getMarketBySlug, listMarkets } from "./lib/reads";
 export type {
   CloseMarketInput,

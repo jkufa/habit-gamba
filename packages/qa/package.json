@@ -1,5 +1,8 @@
 {
   "name": "@habit-gamba/qa",
+  "bin": {
+    "qa": "./src/cli.ts"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -9,5 +12,15 @@
     "check-types": "tsc --noEmit",
     "lint": "oxlint .",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@habit-gamba/contracts": "workspace:*",
+    "@habit-gamba/db": "workspace:*",
+    "@habit-gamba/env": "workspace:*",
+    "@habit-gamba/exchange": "workspace:*",
+    "@habit-gamba/users": "workspace:*",
+    "@habit-gamba/wallet": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.7"
   }
 }
