@@ -1,104 +1,20 @@
 # Data Model And Invariants
 
-This doc contains core persisted concepts and consistency rules.
+Postgres uses Drizzle SQL migrations. Primary keys are ULID text; persisted money, shares, LMSR quantities, fees, payouts, and balances use bigint micro-units.
 
-## Balances
+Core tables: `users`, `balances`, `markets`, `contracts`, `positions`, `trades`, `ledger_entries`, and `resolutions`. `markets` are habit questions; `contracts` are binary YES/NO tradable outcomes.
 
-Cached current rep state for a user.
+REP is the only currency: `1 REP = 1_000_000` micro-units. `ledger_entries` are the append-only source of truth; `balances` are cached projections updated transactionally.
 
-```text
-user_id
-balance
-```
+## Tables
 
-Optional later:
+`users` stores app users and one provider identity pair. `balances` stores cached current REP per user/currency.
 
-```text
-available_balance
-total_balance
-```
+`markets` stores the parent habit question and lifecycle status: `draft`, `open`, `closed`, `resolved`, or `void`. `contracts` stores the binary YES/NO tradable outcomes under each market.
 
-## Ledger Entries
+`positions` stores net user holdings per contract. `trades` stores LMSR-only trade history with idempotency keys.
 
-History of all rep movements.
-
-Ledger entries answer:
-
-```text
-Why is this user's balance what it is?
-```
-
-Examples:
-
-```text
-BUY
-PAYOUT
-REFUND
-GRANT
-PENALTY
-```
-
-For the POC, a single-sided ledger is acceptable. The system can mint/burn fake rep.
-
-## Trades
-
-History of executed market actions.
-
-Trades answer:
-
-```text
-What did this user buy?
-```
-
-Example:
-
-```text
-user_id
-contract_id
-side: YES | NO
-amount_spent
-shares_received
-avg_price
-created_at
-```
-
-## Positions
-
-Current user holdings per contract.
-
-Positions answer:
-
-```text
-What does this user currently own?
-```
-
-Example:
-
-```text
-user_id
-contract_id
-yes_shares
-no_shares
-```
-
-## Contracts
-
-The market/question being bet on.
-
-Example:
-
-```text
-id
-creator_user_id
-title
-description
-status
-outcome
-closes_at
-resolution_due_at
-resolved_at
-created_at
-```
+`ledger_entries` stores every REP movement with source/idempotency fields. `resolutions` stores one winning contract per resolved market, with manual fields now and nullable oracle fields for later.
 
 ## Important Invariants
 
@@ -107,13 +23,14 @@ Check these frequently in tests and QA scenarios.
 ```text
 Every balance change has a ledger entry.
 Cached balances equal ledger-derived balances.
-Every trade references a valid user and contract.
+Every trade references a valid user, market, and contract.
 Every position references a valid user and contract.
-No user balance goes below the allowed negative limit.
-OPEN contracts do not have outcomes.
-RESOLVED contracts have exactly one outcome.
-CANCELLED contracts refund buyers.
-Resolved/cancelled contracts have no active positions.
-YES price and NO price stay between 0 and 1.
-YES price + NO price is approximately 1.
+No cached balance goes negative.
+Each binary market has exactly one YES contract and one NO contract.
+DRAFT/OPEN/CLOSED markets do not have resolutions.
+RESOLVED markets have exactly one resolution row.
+VOID markets refund users by ledger entries.
+LMSR prices stay between 0 and 1.
+YES price + NO price is approximately 1 before rounding.
+Trade and ledger idempotency keys prevent duplicate money writes.
 ```

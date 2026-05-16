@@ -1,0 +1,13 @@
+{
+  "name": "@habit-gamba/users",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun run check-types",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

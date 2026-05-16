@@ -1,0 +1,17 @@
+{
+  "name": "@habit-gamba/server",
+  "type": "module",
+  "scripts": {
+    "build": "bun run check-types",
+    "check-types": "tsc --noEmit",
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "lint": "oxlint .",
+    "start": "bun --env-file=../../.env src/index.ts",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@habit-gamba/db": "workspace:*",
+    "@habit-gamba/env": "workspace:*",
+    "hono": "^4.10.7"
+  }
+}

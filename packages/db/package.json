@@ -1,0 +1,26 @@
+{
+  "name": "@habit-gamba/db",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "build": "bun run check-types",
+    "check-types": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun --env-file=../../.env src/migrate.ts",
+    "db:seed": "bun --env-file=../../.env scripts/seed.ts",
+    "lint": "oxlint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@habit-gamba/env": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "postgres": "^3.4.7",
+    "ulid": "^3.0.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.8"
+  }
+}

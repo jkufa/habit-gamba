@@ -1,32 +1,34 @@
-# QA Strategy And POC Scope
+# QA Strategy
 
-Build deterministic scenario testing before Discord E2E.
+Run `bun fmt`, `bun lint`, `bun typecheck`, and `bun run test` before considering work complete. Never run `bun test`.
 
-The Discord bot should only need thin smoke tests because it is an adapter. Most risk lives in domain behavior.
+Current tests cover env parsing, REP micro-unit constants, and gated Postgres integration for migrations/seed/balance-vs-ledger checks.
 
 ## Highest-Risk Areas
 
-- LMSR pricing.
+- LMSR pricing and rounding.
 - Wallet debits/credits.
 - Ledger consistency.
+- Idempotent trades and money writes.
 - Payout math.
-- Refunds.
-- Creator penalties.
-- Contract lifecycle transitions.
+- Refunds and void markets.
+- Market lifecycle transitions.
+- Reconnect/retry behavior.
+- Stress scenarios with many trades.
 
 ## Scenario Test Shape
 
 Suggested QA structure:
 
 ```text
-qa/
+packages/qa/
   scenarios/
     happy-path.ts
-    cancellation.ts
+    void-market.ts
     stress-500-trades.ts
   seeds/
     users.ts
-    contracts.ts
+    markets.ts
   assertions/
     invariants.ts
   runner.ts
@@ -36,7 +38,7 @@ Example commands:
 
 ```bash
 bun qa run happy-path
-bun qa run cancellation
+bun qa run void-market
 bun qa run stress --trades 500 --seed 12345
 ```
 
@@ -44,10 +46,10 @@ A good stress test should:
 
 ```text
 Seed users
-Create contracts
-Execute hundreds of randomized buys
-Resolve or cancel contracts
-Assert all invariants
+Create markets and YES/NO contracts
+Execute hundreds of randomized LMSR buys
+Resolve or void markets
+Assert ledger/balance/position invariants
 Print a QA report
 ```
 
@@ -56,7 +58,7 @@ Print a QA report
 Build:
 
 ```text
-/create-contract
+/create-market
 /market
 /buy
 /resolve
@@ -69,7 +71,7 @@ Skip for now:
 ```text
 selling shares
 limit orders
-real-time prices
+real-time price streams
 complex disputes
 multiple currencies
 double-entry accounting

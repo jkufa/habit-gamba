@@ -1,26 +1,20 @@
 # Habit Gamba Architecture
 
-Habit Gamba is a proof of concept for a social prediction market for personal habits/goals. Users create contracts, buy YES/NO shares using rep, and resolve outcomes through Discord commands.
+Habit Gamba is a Bun/Turbo proof of concept for a social prediction market for personal habits. It is a modular monolith: thin apps, domain packages, and one Postgres-backed data model.
 
-Build as a **modular monolith**: separate packages/modules with clear ownership, all running in one deployable/process where practical. Do not split into real microservices yet.
+Read task-relevant docs only:
 
-## Agent Loading Guide
-
-Read this file first. Load deeper docs only for task-relevant areas:
-
-- [.docs/architecture/services.md](./architecture/services.md): service ownership, command/API flow, lifecycle rules.
-- [.docs/architecture/components.md](./architecture/components.md): app/package responsibilities and adapter examples.
-- [.docs/architecture/data-model.md](./architecture/data-model.md): balances, ledger entries, trades, positions, contracts, invariants.
-- [.docs/architecture/qa.md](./architecture/qa.md): deterministic scenario testing, stress tests, POC scope.
+- [components.md](./architecture/components.md): app/package ownership.
+- [data-model.md](./architecture/data-model.md): schema and invariants.
+- [services.md](./architecture/services.md): domain package responsibilities.
+- [qa.md](./architecture/qa.md): testing priorities.
 
 ## High-Level Flow
 
 ```text
-Discord User
+Chat/Web User
   ↓
-Discord Bot
-  ↓
-API Server
+Bot or API Server
   ↓
 Domain Packages
   ├─ Users
@@ -30,18 +24,18 @@ Domain Packages
   ├─ Resolution
   └─ Notification
   ↓
-Database
+Postgres
 ```
 
-Bot and API stay thin. Most business rules live in domain packages.
+Bot and API stay thin. Business rules live in domain packages, and durable state changes go through explicit database transactions.
 
 Core system:
 
 ```text
-Commands → domain packages → database transaction → ledger/trade/position updates → notification
+Command/API request → domain package → database transaction → ledger/trade/position updates → notification
 ```
 
-## Suggested Project Structure
+## Project Structure
 
 ```text
 .
@@ -50,60 +44,70 @@ Commands → domain packages → database transaction → ledger/trade/position 
 │   └── server/
 └── packages/
     ├── db/
+    ├── env/
     ├── users/
     ├── contracts/
     ├── exchange/
     ├── wallet/
     ├── resolution/
-    └── notification/
+    ├── notification/
+    └── qa/
 ```
 
 ## Components
 
 ### `apps/bot`
 
-Discord-specific interface layer.
+Provider-neutral bot worker for chat-command adapters.
 
 ### `apps/server`
 
-REST API layer used by the bot.
+Hono HTTP API layer.
 
 ### `packages/db`
 
-Database schema and local database tooling.
+Drizzle schema, migrations, DB client, seed data, IDs, and currency constants.
+
+### `packages/env`
+
+Shared typed env parsing.
 
 ### `packages/users`
 
-Discord-to-app user identity.
+Provider identity and app user behavior.
 
 ### `packages/contracts`
 
-Contract creation and lifecycle.
+Binary YES/NO outcome instruments under parent markets.
 
 ### `packages/exchange`
 
-Pricing, trades, and positions.
+LMSR quotes, trades, positions, and market state changes.
 
 ### `packages/wallet`
 
-Rep balances and ledger entries.
+REP balances, ledger entries, debits, credits, refunds, and payouts.
 
 ### `packages/resolution`
 
-Resolution, cancellation, refunds, and payouts.
+Manual/oracle-ready resolution, cancellation, refunds, and payouts.
 
 ### `packages/notification`
 
-User-facing notifications.
+User-facing notification composition and delivery boundaries.
+
+### `packages/qa`
+
+Scenario helpers and invariant checks.
 
 ## Core Priorities
 
 1. Performance first.
 2. Reliability first.
-3. Predictable behavior under load and failure: session restarts, reconnects, partial streams.
+3. Predictable behavior under load and failure: session restarts, reconnects, partial streams, and retries.
 
-If tradeoff required, choose correctness and robustness over short-term convenience.
+If a tradeoff is required, choose correctness and robustness over short-term convenience.
 
 ## Design Principle
 
-Keep architecture boring and transactionally safe. Optimize for correctness, debuggability, and fast simulation testing before scale.
+Keep architecture boring and transactionally safe. Optimize for correctness, debuggability, and deterministic simulation testing before scale.

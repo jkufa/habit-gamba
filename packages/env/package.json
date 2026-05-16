@@ -1,0 +1,16 @@
+{
+  "name": "@habit-gamba/env",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "bun run check-types",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "zod": "^4.2.0"
+  }
+}
