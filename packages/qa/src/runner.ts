@@ -50,6 +50,10 @@ export async function runQaScenario(options: QaRunOptions): Promise<QaCommandRes
     qaRunId,
     scenario: options.scenario,
     ...(options.seed === undefined ? {} : { seed: options.seed }),
+    ...(options.tradeConcurrency === undefined
+      ? {}
+      : { tradeConcurrency: options.tradeConcurrency }),
+    ...(options.trades === undefined ? {} : { trades: options.trades }),
   });
 
   for (const action of actions) {

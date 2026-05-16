@@ -31,6 +31,8 @@ export type QaRunOptions = {
   scenario: QaScenarioName;
   seed?: number;
   scope?: InvariantScope;
+  tradeConcurrency?: number;
+  trades?: number;
 };
 
 export type QaCheckOptions = {

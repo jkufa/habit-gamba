@@ -17,19 +17,17 @@ type CliOptions = {
   scope: QaScopeName;
   seed?: number;
   setupIsolatedDb: boolean;
+  tradeConcurrency: number;
   trades?: number;
 };
 
 const QA_DATABASE_NAME = "habit_gamba_qa";
+const DEFAULT_TRADE_CONCURRENCY = 8;
 const migrationsFolder = new URL("../../db/drizzle", import.meta.url).pathname;
 
 export async function runCli(argv = process.argv.slice(2), env = process.env): Promise<number> {
   try {
     const options = parseArgs(argv);
-
-    if (options.trades !== undefined) {
-      throw new Error("TODO: --trades requires exchange trade API before QA can stress trades");
-    }
 
     const databaseUrl = resolveDatabaseUrl(options, env);
 
@@ -68,6 +66,8 @@ export async function runCli(argv = process.argv.slice(2), env = process.env): P
               scenario: options.scenario ?? "happy-path",
               ...(options.scope === "all" ? { scope: { kind: "all" } as const } : {}),
               ...(options.seed === undefined ? {} : { seed: options.seed }),
+              tradeConcurrency: options.tradeConcurrency,
+              ...(options.trades === undefined ? {} : { trades: options.trades }),
             });
 
       writeOutput(options, result);
@@ -94,6 +94,7 @@ export function parseArgs(argv: string[]): CliOptions {
     json: false,
     scope: "all",
     setupIsolatedDb: false,
+    tradeConcurrency: DEFAULT_TRADE_CONCURRENCY,
   };
   const args = command === "run" ? rest : [maybeScenario, ...rest].filter(isString);
 
@@ -158,6 +159,15 @@ export function parseArgs(argv: string[]): CliOptions {
         throw new Error("--trades must be a nonnegative integer");
       }
       options.trades = trades;
+      continue;
+    }
+
+    if (arg === "--trade-concurrency") {
+      const tradeConcurrency = Number(readFlagValue(args, ++index, arg));
+      if (!Number.isInteger(tradeConcurrency) || tradeConcurrency <= 0) {
+        throw new Error("--trade-concurrency must be a positive integer");
+      }
+      options.tradeConcurrency = tradeConcurrency;
       continue;
     }
 

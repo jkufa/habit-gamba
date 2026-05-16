@@ -1,4 +1,6 @@
 import { closeMarket, createBinaryMarket, openMarket, voidMarket } from "@habit-gamba/contracts";
+import { repToMicro } from "@habit-gamba/db";
+import { createExchange } from "@habit-gamba/exchange";
 import type { DbClient } from "@habit-gamba/db";
 
 import type { QaFixture, QaScenarioName } from "./types";
@@ -14,6 +16,8 @@ export function buildScenario(input: {
   qaRunId: string;
   scenario: QaScenarioName;
   seed?: number;
+  tradeConcurrency?: number;
+  trades?: number;
 }): QaAction[] {
   if (input.scenario === "happy-path") {
     return buildHappyPath(input);
@@ -129,7 +133,13 @@ function buildStress(input: {
   fixture: QaFixture;
   qaRunId: string;
   seed?: number;
+  tradeConcurrency?: number;
+  trades?: number;
 }): QaAction[] {
+  if (input.trades !== undefined && input.trades > 0) {
+    return buildTradeStress(input);
+  }
+
   const actions: QaAction[] = [];
   const random = mulberry32(input.seed ?? 1);
 
@@ -183,6 +193,86 @@ function buildStress(input: {
   return actions;
 }
 
+function buildTradeStress(input: {
+  db: DbClient;
+  fixture: QaFixture;
+  qaRunId: string;
+  seed?: number;
+  tradeConcurrency?: number;
+  trades?: number;
+}): QaAction[] {
+  const marketIdRef = { current: "" };
+  const contractIdRef = { current: "" };
+  const exchange = createExchange({ defaultLiquidityMicro: repToMicro(100n) });
+  const tradeCount = input.trades ?? 0;
+  const tradeConcurrency = input.tradeConcurrency ?? 8;
+
+  return [
+    {
+      name: "trade-stress-create-market",
+      run: async () => {
+        const { market } = await createBinaryMarket({
+          creatorUserId: input.fixture.users[0]?.id ?? fail("missing QA creator"),
+          db: input.db,
+          metadata: qaMarketMetadata(input.qaRunId, "trade-stress"),
+          slug: `${input.qaRunId}-trade-stress`,
+          title: "QA trade stress market",
+        });
+
+        marketIdRef.current = market.id;
+        contractIdRef.current = market.contracts[0].id;
+      },
+    },
+    {
+      name: "trade-stress-open-market",
+      run: async () => {
+        await openMarket({
+          closesAt: new Date("2030-04-02T00:00:00.000Z"),
+          db: input.db,
+          marketId: marketIdRef.current,
+          openedAt: new Date("2030-04-01T00:00:00.000Z"),
+        });
+      },
+    },
+    {
+      name: `trade-stress-buy-${tradeCount}`,
+      run: async () => {
+        const random = mulberry32(input.seed ?? 1);
+        const actions = Array.from({ length: tradeCount }, (_, index) => {
+          const user =
+            input.fixture.users[index % input.fixture.users.length] ?? fail("missing QA user");
+          const outcome = random() < 0.5 ? "YES" : "NO";
+          const amountMicro = repToMicro(BigInt(1 + Math.floor(random() * 3)));
+
+          return async () => {
+            await exchange.buy({
+              amountMicro,
+              contractId: contractIdRef.current,
+              db: input.db,
+              idempotencyKey: `${input.qaRunId}:trade-stress:${index}`,
+              now: new Date("2030-04-01T00:00:01.000Z"),
+              outcome,
+              userId: user.id,
+            });
+          };
+        });
+
+        await runBounded(actions, tradeConcurrency);
+      },
+    },
+    {
+      name: "trade-stress-close-market",
+      run: async () => {
+        await closeMarket({
+          closedAt: new Date("2030-04-02T00:00:01.000Z"),
+          db: input.db,
+          marketId: marketIdRef.current,
+        });
+      },
+    },
+  ];
+}
+
 function qaMarketMetadata(qaRunId: string, scenario: string): Record<string, unknown> {
   return {
     qa: true,
@@ -205,4 +295,18 @@ function mulberry32(seed: number): () => number {
 
 function fail(message: string): never {
   throw new Error(message);
+}
+
+async function runBounded(tasks: Array<() => Promise<void>>, concurrency: number) {
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (nextIndex < tasks.length) {
+        const task = tasks[nextIndex];
+        nextIndex += 1;
+        await task?.();
+      }
+    }),
+  );
 }
