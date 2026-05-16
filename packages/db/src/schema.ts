@@ -29,6 +29,7 @@ export const ledgerReasonEnum = pgEnum("ledger_reason", [
   "adjustment",
 ]);
 export const resolutionKindEnum = pgEnum("resolution_kind", ["manual", "oracle"]);
+export const userStatusEnum = pgEnum("user_status", ["active", "deactivated"]);
 
 function idColumn() {
   return text("id").primaryKey();
@@ -57,6 +58,7 @@ export const users = pgTable(
     providerUserId: text("provider_user_id").notNull(),
     handle: text("handle"),
     displayName: text("display_name").notNull(),
+    status: userStatusEnum("status").notNull().default("active"),
     metadata: metadataColumn(),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),

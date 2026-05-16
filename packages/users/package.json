@@ -9,5 +9,9 @@
     "check-types": "tsc --noEmit",
     "lint": "oxlint .",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@habit-gamba/db": "workspace:*",
+    "drizzle-orm": "^0.45.1"
   }
 }

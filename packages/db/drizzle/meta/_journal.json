@@ -15,6 +15,13 @@
       "when": 1778960308547,
       "tag": "0001_regular_garia",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778964561837,
+      "tag": "0002_colorful_calypso",
+      "breakpoints": true
     }
   ]
 }

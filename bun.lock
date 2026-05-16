@@ -30,6 +30,10 @@
     },
     "packages/contracts": {
       "name": "@habit-gamba/contracts",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
     },
     "packages/db": {
       "name": "@habit-gamba/db",
@@ -63,6 +67,10 @@
     },
     "packages/users": {
       "name": "@habit-gamba/users",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
     },
     "packages/wallet": {
       "name": "@habit-gamba/wallet",

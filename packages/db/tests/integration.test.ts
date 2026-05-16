@@ -7,6 +7,11 @@ import { balances, contracts, ledgerEntries, markets, users } from "../src/schem
 
 const databaseUrl = process.env.DATABASE_URL;
 const maybeDescribe = databaseUrl ? describe : describe.skip;
+const seededUserIds = new Set([
+  "01KRS1E7CXQPT6MSMEQ80MV8G2",
+  "01KRS1E7CZHGTQQ5N7Y7KD31Z7",
+  "01KRS1E7CZDXZJTSASSS0EX1Z4",
+]);
 
 maybeDescribe("database foundation", () => {
   const client = createDbClient({ databaseUrl: databaseUrl ?? "", max: 1 });
@@ -35,7 +40,9 @@ maybeDescribe("database foundation", () => {
       2,
     );
     expect(
-      seededLedgerEntries.filter((entry) => entry.sourceType === "seed_user_grant"),
+      seededLedgerEntries.filter(
+        (entry) => entry.sourceType === "seed_user_grant" && seededUserIds.has(entry.userId),
+      ),
     ).toHaveLength(3);
   });
 
