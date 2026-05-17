@@ -11,6 +11,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@habit-gamba/api": "workspace:*",
     "@habit-gamba/db": "workspace:*",
     "@habit-gamba/env": "workspace:*",
     "discord.js": "^14.26.4"

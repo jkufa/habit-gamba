@@ -1,3 +1,24 @@
+import type {
+  AccountResponse,
+  ApiErrorResponse,
+  ApiOk,
+  AutocompleteMarketsResponse,
+  BuyMarketResponse,
+  CancelMarketResponse,
+  CloseMarketResponse,
+  CreateMarketResponse,
+  LeaderboardResponse,
+  MarketMetadataResponse,
+  MarketResponse,
+  OpenMarketResponse,
+  PositionsResponse,
+  PreviewCancelResponse,
+  RefreshTradesResponse,
+  RegisterAccountResponse,
+  ResolveMarketResponse,
+  Serialized,
+} from "@habit-gamba/api";
+
 import { formatMicro, formatPercent, parseDecimalMicro } from "./money";
 import type { Actor } from "./permissions";
 
@@ -79,10 +100,34 @@ export type BotPositionView = {
   };
 };
 
+export type BotPosition = BotPositionView["position"];
+
+export type BotQuote = {
+  costMicro: bigint;
+  outcome: "NO" | "YES";
+  pricesAfter: { no: number; yes: number };
+  pricesBefore: { no: number; yes: number };
+  sharesMicro: bigint;
+};
+
 export type BotLeaderboardEntry = {
   balance: BotBalance;
   rank: number;
   user: BotUser;
+};
+
+export type BotBuyResult = Omit<Serialized<BuyMarketResponse>, "market" | "position" | "quote"> & {
+  market: BotMarket;
+  position: BotPosition;
+  quote: BotQuote;
+};
+
+export type BotResolvedMarketResult = Omit<Serialized<ResolveMarketResponse>, "market"> & {
+  market: BotMarket;
+};
+
+export type BotCanceledMarketResult = Omit<Serialized<CancelMarketResponse>, "market"> & {
+  market: BotMarket;
 };
 
 export type BotApiErrorBody = {
@@ -106,7 +151,7 @@ export class BotApiError extends Error {
 }
 
 export async function getDiscordUser(input: BotServices & { discordUserId: string }) {
-  const result = await request(input, "/accounts/me", {
+  const result = await request<AccountResponse>(input, "/accounts/me", {
     actor: { discordUserId: input.discordUserId },
     allowNotFound: true,
     method: "GET",
@@ -116,7 +161,7 @@ export async function getDiscordUser(input: BotServices & { discordUserId: strin
 }
 
 export async function registerAccount(input: BotServices & { identity: DiscordIdentity }) {
-  const result = await request(input, "/accounts/register", {
+  const result = await request<RegisterAccountResponse>(input, "/accounts/register", {
     body: {
       displayName: input.identity.displayName,
       handle: input.identity.handle ?? null,
@@ -134,7 +179,7 @@ export async function registerAccount(input: BotServices & { identity: DiscordId
 }
 
 export async function getAccount(input: BotServices & { actor: Actor }) {
-  const result = await request(input, "/accounts/me", {
+  const result = await request<AccountResponse>(input, "/accounts/me", {
     actor: input.actor,
     method: "GET",
   });
@@ -152,8 +197,8 @@ export async function createMarketCommand(
     slug?: string | null;
     title: string;
   },
-) {
-  const result = await request(input, "/markets", {
+): Promise<{ market: BotMarket; opened: false }> {
+  const result = await request<CreateMarketResponse>(input, "/markets", {
     actor: input.actor,
     body: {
       description: input.description ?? null,
@@ -172,8 +217,8 @@ export async function openMarketCommand(
     closesAt: Date;
     marketId: string;
   },
-) {
-  const result = await request(input, `/markets/${input.marketId}/open`, {
+): Promise<BotMarket> {
+  const result = await request<OpenMarketResponse>(input, `/markets/${input.marketId}/open`, {
     actor: input.actor,
     body: {
       closesAt: input.closesAt.toISOString(),
@@ -184,8 +229,10 @@ export async function openMarketCommand(
   return parseMarket(result);
 }
 
-export async function closeMarketCommand(input: BotServices & { actor: Actor; marketId: string }) {
-  const result = await request(input, `/markets/${input.marketId}/close`, {
+export async function closeMarketCommand(
+  input: BotServices & { actor: Actor; marketId: string },
+): Promise<BotMarket> {
+  const result = await request<CloseMarketResponse>(input, `/markets/${input.marketId}/close`, {
     actor: input.actor,
     method: "POST",
   });
@@ -199,8 +246,12 @@ export async function refreshMarketCommand(
   return viewMarketCommand(input);
 }
 
-export async function viewMarketCommand(input: BotServices & { marketId: string }) {
-  const result = await request(input, `/markets/${input.marketId}`, { method: "GET" });
+export async function viewMarketCommand(
+  input: BotServices & { marketId: string },
+): Promise<BotMarket> {
+  const result = await request<MarketResponse>(input, `/markets/${input.marketId}`, {
+    method: "GET",
+  });
 
   return parseMarket(result);
 }
@@ -213,9 +264,9 @@ export async function buyMarketCommand(
     outcome: "NO" | "YES";
     value: string;
   },
-) {
+): Promise<BotBuyResult> {
   const amountMicro = parseDecimalMicro(input.value, input.mode);
-  const result = await request(input, `/markets/${input.marketId}/buy`, {
+  const result = await request<BuyMarketResponse>(input, `/markets/${input.marketId}/buy`, {
     actor: input.actor,
     body: {
       amountMicro: amountMicro.toString(),
@@ -232,7 +283,7 @@ export async function buyMarketCommand(
 export async function listPositionsCommand(
   input: BotServices & { actor: Actor },
 ): Promise<{ positions: BotPositionView[] }> {
-  const result = await request(input, "/accounts/me/positions", {
+  const result = await request<PositionsResponse>(input, "/accounts/me/positions", {
     actor: input.actor,
     method: "GET",
   });
@@ -252,7 +303,9 @@ export async function getLeaderboardCommand(
   }
 
   const query = params.size > 0 ? `?${params}` : "";
-  const result = await request(input, `/leaderboard${query}`, { method: "GET" });
+  const result = await request<LeaderboardResponse>(input, `/leaderboard${query}`, {
+    method: "GET",
+  });
 
   return {
     entries: result.entries.map(parseLeaderboardEntry),
@@ -266,8 +319,8 @@ export async function resolveMarketCommand(
     marketId: string;
     outcome: "NO" | "YES";
   },
-) {
-  const result = await request(input, `/markets/${input.marketId}/resolve`, {
+): Promise<BotResolvedMarketResult> {
+  const result = await request<ResolveMarketResponse>(input, `/markets/${input.marketId}/resolve`, {
     actor: input.actor,
     body: {
       evidence: input.evidence,
@@ -285,8 +338,8 @@ export async function cancelMarketCommand(
     marketId: string;
     reason: string;
   },
-) {
-  const result = await request(input, `/markets/${input.marketId}/cancel`, {
+): Promise<BotCanceledMarketResult> {
+  const result = await request<CancelMarketResponse>(input, `/markets/${input.marketId}/cancel`, {
     actor: input.actor,
     body: {
       reason: input.reason,
@@ -301,7 +354,7 @@ export async function previewCancelMarketCommand(
   input: BotServices & { actor?: Actor; marketId: string },
 ) {
   return parseCancelPreview(
-    await request(input, `/markets/${input.marketId}/cancel/preview`, {
+    await request<PreviewCancelResponse>(input, `/markets/${input.marketId}/cancel/preview`, {
       actor: input.actor,
       method: "POST",
     }),
@@ -317,7 +370,11 @@ export async function autocompleteMarkets(
     params.set("subcommand", input.subcommand);
   }
 
-  const result = await request(input, `/markets?${params}`, withOptionalActor(input.actor, "GET"));
+  const result = await request<AutocompleteMarketsResponse>(
+    input,
+    `/markets?${params}`,
+    withOptionalActor(input.actor, "GET"),
+  );
 
   return result.markets.map(parseMarket);
 }
@@ -328,7 +385,7 @@ export async function writeMarketDiscordMetadata(
     metadata: Record<string, unknown>;
   },
 ) {
-  await request(input, `/markets/${input.marketId}/metadata`, {
+  await request<MarketMetadataResponse>(input, `/markets/${input.marketId}/metadata`, {
     body: {
       metadata: {
         discord: input.metadata,
@@ -352,9 +409,13 @@ export async function listMarketRefreshTrades(
   }
 
   const query = params.size > 0 ? `?${params}` : "";
-  const result = await request(input, `/markets/${input.marketId}/refresh-trades${query}`, {
-    method: "GET",
-  });
+  const result = await request<RefreshTradesResponse>(
+    input,
+    `/markets/${input.marketId}/refresh-trades${query}`,
+    {
+      method: "GET",
+    },
+  );
 
   return result.trades.map(parseRefreshTrade);
 }
@@ -468,13 +529,27 @@ type RequestOptions = {
   method: "GET" | "PATCH" | "POST";
 };
 
-async function request(input: BotServices, path: string, options: RequestOptions) {
+async function request<T>(
+  input: BotServices,
+  path: string,
+  options: RequestOptions & { allowNotFound: true },
+): Promise<Serialized<T> | null>;
+async function request<T>(
+  input: BotServices,
+  path: string,
+  options: RequestOptions,
+): Promise<Serialized<T>>;
+async function request<T>(
+  input: BotServices,
+  path: string,
+  options: RequestOptions,
+): Promise<Serialized<T> | null> {
   const response = await fetch(new URL(path, input.apiBaseUrl), {
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     headers: requestHeaders(input, options),
     method: options.method,
   });
-  const payload = (await response.json()) as BotApiErrorBody & { data?: unknown };
+  const payload = (await response.json()) as Partial<ApiErrorResponse> & Partial<ApiOk<T>>;
 
   if (!response.ok) {
     if (options.allowNotFound && payload.error?.code === "UNAUTHORIZED") {
@@ -489,7 +564,7 @@ async function request(input: BotServices, path: string, options: RequestOptions
     );
   }
 
-  return payload.data as any;
+  return payload.data as Serialized<T>;
 }
 
 function requestHeaders(input: BotServices, options: RequestOptions): Record<string, string> {
@@ -515,11 +590,11 @@ function withOptionalActor(
   return actor ? { actor, method } : { method };
 }
 
-function parseUser(value: any): BotUser {
+function parseUser(value: Serialized<AccountResponse["user"]>): BotUser {
   return value as BotUser;
 }
 
-function parseBalance(value: any): BotBalance {
+function parseBalance(value: Serialized<BotBalance>): BotBalance {
   return {
     ...value,
     availableAmountMicro: BigInt(value.availableAmountMicro),
@@ -528,18 +603,20 @@ function parseBalance(value: any): BotBalance {
   };
 }
 
-function parseMarket(value: any): BotMarket {
+function parseMarket(
+  value: Serialized<CloseMarketResponse | MarketResponse | OpenMarketResponse>,
+): BotMarket {
   return {
     ...value,
     closesAt: value.closesAt ? new Date(value.closesAt) : null,
-    contracts: value.contracts.map((contract: any) => ({
+    contracts: value.contracts.map((contract) => ({
       ...contract,
       shareSupplyMicro: BigInt(contract.shareSupplyMicro),
     })),
   };
 }
 
-function parseBuyResult(value: any) {
+function parseBuyResult(value: Serialized<BuyMarketResponse>): BotBuyResult {
   return {
     ...value,
     market: parseMarket(value.market),
@@ -548,7 +625,9 @@ function parseBuyResult(value: any) {
   };
 }
 
-function parsePositionView(value: any) {
+function parsePositionView(
+  value: Serialized<PositionsResponse["positions"][number]>,
+): BotPositionView {
   return {
     contract: {
       ...value.contract,
@@ -559,7 +638,9 @@ function parsePositionView(value: any) {
   };
 }
 
-function parseLeaderboardEntry(value: any): BotLeaderboardEntry {
+function parseLeaderboardEntry(
+  value: Serialized<LeaderboardResponse["entries"][number]>,
+): BotLeaderboardEntry {
   return {
     balance: parseBalance(value.balance),
     rank: value.rank,
@@ -567,14 +648,18 @@ function parseLeaderboardEntry(value: any): BotLeaderboardEntry {
   };
 }
 
-function parsePosition(value: any) {
+function parsePosition(
+  value: Serialized<
+    BuyMarketResponse["position"] | PositionsResponse["positions"][number]["position"]
+  >,
+): BotPosition {
   return {
     ...value,
     quantityMicro: BigInt(value.quantityMicro),
   };
 }
 
-function parseQuote(value: any) {
+function parseQuote(value: Serialized<BuyMarketResponse["quote"]>): BotQuote {
   return {
     ...value,
     costMicro: BigInt(value.costMicro),
@@ -582,7 +667,7 @@ function parseQuote(value: any) {
   };
 }
 
-function parseCancelPreview(value: any) {
+function parseCancelPreview(value: Serialized<PreviewCancelResponse>): PreviewCancelResponse {
   return {
     creatorNetMicro: BigInt(value.creatorNetMicro),
     creatorPenaltyMicro: BigInt(value.creatorPenaltyMicro),
@@ -590,7 +675,9 @@ function parseCancelPreview(value: any) {
   };
 }
 
-function parseRefreshTrade(value: any): MarketRefreshTrade {
+function parseRefreshTrade(
+  value: Serialized<RefreshTradesResponse["trades"][number]>,
+): MarketRefreshTrade {
   return {
     ...value,
     cashDeltaMicro: BigInt(value.cashDeltaMicro),

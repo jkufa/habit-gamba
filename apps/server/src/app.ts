@@ -1,4 +1,12 @@
 import { closeMarket, createBinaryMarket, getMarketById, openMarket } from "@habit-gamba/contracts";
+import type {
+  AutocompleteMarketsResponse,
+  CancelMarketResponse,
+  LeaderboardResponse,
+  RefreshTradesResponse,
+  RegisterAccountResponse,
+  ResolveMarketResponse,
+} from "@habit-gamba/api";
 import type { DbClient } from "@habit-gamba/db";
 import { createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
@@ -82,7 +90,9 @@ export function createApp(input: {
       userId: user.id,
     });
 
-    return context.json(ok({ balance: grant.balance, grant, user }), grant.idempotent ? 200 : 201);
+    const response = { balance: grant.balance, grant, user } satisfies RegisterAccountResponse;
+
+    return context.json(ok(response), grant.idempotent ? 200 : 201);
   });
 
   app.get("/accounts/me", async (context) => {
@@ -110,7 +120,9 @@ export function createApp(input: {
       subcommand: context.req.query("subcommand"),
     });
 
-    return context.json(ok({ markets }));
+    const response = { markets } satisfies AutocompleteMarketsResponse;
+
+    return context.json(ok(response));
   });
 
   app.post("/markets", async (context) => {
@@ -253,13 +265,12 @@ export function createApp(input: {
       .where(eq(schema.markets.id, market.id))
       .returning();
 
-    return context.json(
-      ok({
-        ...result,
-        market: updated ? { ...marketView, metadata: updated.metadata } : marketView,
-      }),
-      result.idempotent ? 200 : 201,
-    );
+    const response = {
+      ...result,
+      market: updated ? { ...marketView, metadata: updated.metadata } : marketView,
+    } satisfies ResolveMarketResponse;
+
+    return context.json(ok(response), result.idempotent ? 200 : 201);
   });
 
   app.post("/markets/:id/cancel/preview", async (context) => {
@@ -288,10 +299,12 @@ export function createApp(input: {
       reason: body.reason.trim(),
     });
 
-    return context.json(
-      ok({ ...result, market: await exchange.getMarket({ db: input.db, marketId: market.id }) }),
-      result.idempotent ? 200 : 201,
-    );
+    const response = {
+      ...result,
+      market: await exchange.getMarket({ db: input.db, marketId: market.id }),
+    } satisfies CancelMarketResponse;
+
+    return context.json(ok(response), result.idempotent ? 200 : 201);
   });
 
   app.get("/markets/:id/refresh-trades", async (context) => {
@@ -308,7 +321,9 @@ export function createApp(input: {
       marketId: context.req.param("id"),
     });
 
-    return context.json(ok({ trades: result }));
+    const response = { trades: result } satisfies RefreshTradesResponse;
+
+    return context.json(ok(response));
   });
 
   app.patch("/markets/:id/metadata", async (context) => {
@@ -343,11 +358,13 @@ export function createApp(input: {
     ),
   );
 
-  app.get("/leaderboard", async (context) =>
-    context.json(
-      ok(await getLeaderboard(toLeaderboardInput(input.db, context.req.query("limit")))),
-    ),
-  );
+  app.get("/leaderboard", async (context) => {
+    const response = (await getLeaderboard(
+      toLeaderboardInput(input.db, context.req.query("limit")),
+    )) satisfies LeaderboardResponse;
+
+    return context.json(ok(response));
+  });
 
   return app;
 }

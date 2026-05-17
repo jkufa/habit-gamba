@@ -10,6 +10,7 @@
     "test": "bun --env-file=../../.env vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@habit-gamba/api": "workspace:*",
     "@habit-gamba/contracts": "workspace:*",
     "@habit-gamba/db": "workspace:*",
     "@habit-gamba/env": "workspace:*",

@@ -6,6 +6,7 @@ import {
   MarketInvalidTransitionError,
   MarketNotFoundError,
 } from "@habit-gamba/contracts";
+import type { ApiErrorResponse, ApiOk, Serialized } from "@habit-gamba/api";
 import {
   ExchangeIdempotencyConflictError,
   ExchangeMarketNotFoundError,
@@ -32,15 +33,9 @@ export class ApiError extends Error {
   }
 }
 
-export type ErrorBody = {
-  error: {
-    code: string;
-    details?: unknown;
-    message: string;
-  };
-};
+export type ErrorBody = ApiErrorResponse;
 
-export function ok(data: unknown): { data: unknown } {
+export function ok<T>(data: T): ApiOk<T> {
   return { data: serializeJson(data) };
 }
 
@@ -59,26 +54,26 @@ export function errorBody(error: unknown): { body: ErrorBody; status: number } {
   };
 }
 
-export function serializeJson(value: unknown): unknown {
+export function serializeJson<T>(value: T): Serialized<T> {
   if (typeof value === "bigint") {
-    return value.toString();
+    return value.toString() as Serialized<T>;
   }
 
   if (value instanceof Date) {
-    return value.toISOString();
+    return value.toISOString() as Serialized<T>;
   }
 
   if (Array.isArray(value)) {
-    return value.map((entry) => serializeJson(entry));
+    return value.map((entry) => serializeJson(entry)) as Serialized<T>;
   }
 
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, entry]) => [key, serializeJson(entry)]),
-    );
+    ) as Serialized<T>;
   }
 
-  return value;
+  return value as Serialized<T>;
 }
 
 function mapError(error: unknown): ApiError {

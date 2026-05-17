@@ -1,3 +1,18 @@
+import type {
+  AccountResponse,
+  ApiErrorResponse,
+  ApiOk,
+  BuyMarketResponse,
+  CancelMarketResponse,
+  CloseMarketResponse,
+  CreateMarketResponse,
+  HealthResponse,
+  LeaderboardResponse,
+  MarketResponse,
+  OpenMarketResponse,
+  ResolveMarketResponse,
+  Serialized,
+} from "@habit-gamba/api";
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
 import { grantUserRole } from "@habit-gamba/users";
 import { creditRep } from "@habit-gamba/wallet";
@@ -30,7 +45,7 @@ maybeDescribe("server API", () => {
 
   it("wraps health responses", async () => {
     const response = await app.request("/health");
-    const body = await json<ApiResponse>(response);
+    const body = await json<ApiOk<HealthResponse>>(response);
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
@@ -60,7 +75,7 @@ maybeDescribe("server API", () => {
 
     expect(missingAuth.status).toBe(401);
     expect(unknownUser.status).toBe(401);
-    expect((await json<ApiResponse>(missingAuth)).error?.code).toBe("UNAUTHORIZED");
+    expect((await json<ApiErrorResponse>(missingAuth)).error.code).toBe("UNAUTHORIZED");
   });
 
   it("registers provider-neutral accounts through trusted bot auth", async () => {
@@ -87,12 +102,12 @@ maybeDescribe("server API", () => {
     const account = await app.request("/accounts/me", {
       headers: authHeaders("discord", providerUserId),
     });
-    const accountBody = await json<ApiResponse>(account);
+    const accountBody = await jsonOk<AccountResponse>(account);
 
     expect(missingToken.status).toBe(401);
     expect(registered.status).toBe(201);
     expect(account.status).toBe(200);
-    expect(accountBody.data.balance.availableAmountMicro).toBe(repToMicro(1_000n).toString());
+    expect(accountBody.balance.availableAmountMicro).toBe(repToMicro(1_000n).toString());
   });
 
   it("creates draft markets, opens them by creator, reads without auth, and serializes bigints", async () => {
@@ -106,14 +121,14 @@ maybeDescribe("server API", () => {
       headers: authHeaders(creator.provider, creator.providerUserId),
       method: "POST",
     });
-    const openedBody = await json<ApiResponse>(openedResponse);
+    const openedBody = await jsonOk<OpenMarketResponse>(openedResponse);
 
     expect(readDraft.status).toBe(200);
     expect(market.status).toBe("draft");
     expect(openedResponse.status).toBe(200);
-    expect(openedBody.data.status).toBe("open");
-    expect(typeof openedBody.data.liquidityParameterMicro).toBe("string");
-    expect(openedBody.data.contracts).toHaveLength(2);
+    expect(openedBody.status).toBe("open");
+    expect(typeof openedBody.liquidityParameterMicro).toBe("string");
+    expect(openedBody.contracts).toHaveLength(2);
   });
 
   it("rejects non-creator open and resolve attempts", async () => {
@@ -172,7 +187,7 @@ maybeDescribe("server API", () => {
       },
       method: "POST",
     });
-    const buyBody = await json<ApiResponse>(buyResponse);
+    const buyBody = await jsonOk<BuyMarketResponse>(buyResponse);
 
     const resolveResponse = await requestJson(`/markets/${resolveMarket.id}/resolve`, {
       body: {
@@ -191,10 +206,10 @@ maybeDescribe("server API", () => {
       headers: authHeaders(canceler.provider, canceler.providerUserId),
       method: "POST",
     });
-    const resolveBody = await json<ApiResponse>(resolveResponse);
-    const cancelBody = await json<ApiResponse>(cancelResponse);
+    const resolveBody = await jsonOk<ResolveMarketResponse>(resolveResponse);
+    const cancelBody = await jsonOk<CancelMarketResponse>(cancelResponse);
     const resolvedRead = await app.request(`/markets/${resolveMarket.id}`);
-    const resolvedReadBody = await json<ApiResponse>(resolvedRead);
+    const resolvedReadBody = await jsonOk<MarketResponse>(resolvedRead);
     const idempotentResolve = await requestJson(`/markets/${resolveMarket.id}/resolve`, {
       body: {
         outcome: "YES",
@@ -202,27 +217,27 @@ maybeDescribe("server API", () => {
       headers: authHeaders(resolver.provider, resolver.providerUserId),
       method: "POST",
     });
-    const idempotentResolveBody = await json<ApiResponse>(idempotentResolve);
+    const idempotentResolveBody = await jsonOk<ResolveMarketResponse>(idempotentResolve);
 
     expect(buyResponse.status).toBe(201);
     expect(resolveResponse.status).toBe(201);
-    expect(resolveBody.data.market.status).toBe("resolved");
-    expect(resolveBody.data.market.contracts).toHaveLength(2);
-    expect(resolveBody.data.market.prices).toEqual(buyBody.data.market.prices);
-    expect(resolveBody.data.market.prices).toMatchObject({
+    expect(resolveBody.market.status).toBe("resolved");
+    expect(resolveBody.market.contracts).toHaveLength(2);
+    expect(resolveBody.market.prices).toEqual(buyBody.market.prices);
+    expect(resolveBody.market.prices).toMatchObject({
       no: expect.any(Number),
       yes: expect.any(Number),
     });
-    expect(resolveBody.data.market.prices.yes).toBeLessThan(0.5);
-    expect(resolveBody.data.market.prices.no).toBeGreaterThan(0.5);
-    expect(resolvedReadBody.data.prices).toEqual(buyBody.data.market.prices);
+    expect(resolveBody.market.prices.yes).toBeLessThan(0.5);
+    expect(resolveBody.market.prices.no).toBeGreaterThan(0.5);
+    expect(resolvedReadBody.prices).toEqual(buyBody.market.prices);
     expect(idempotentResolve.status).toBe(200);
-    expect(idempotentResolveBody.data.market.prices).toEqual(buyBody.data.market.prices);
-    expect(typeof resolveBody.data.market.contracts[0].shareSupplyMicro).toBe("string");
+    expect(idempotentResolveBody.market.prices).toEqual(buyBody.market.prices);
+    expect(typeof resolveBody.market.contracts[0]?.shareSupplyMicro).toBe("string");
     expect(cancelResponse.status).toBe(201);
-    expect(cancelBody.data.market.status).toBe("void");
-    expect(cancelBody.data.market.contracts).toHaveLength(2);
-    expect(cancelBody.data.market.prices).toMatchObject({
+    expect(cancelBody.market.status).toBe("void");
+    expect(cancelBody.market.contracts).toHaveLength(2);
+    expect(cancelBody.market.prices).toMatchObject({
       no: expect.any(Number),
       yes: expect.any(Number),
     });
@@ -305,8 +320,8 @@ maybeDescribe("server API", () => {
       },
       method: "POST",
     });
-    const buyBody = await json<ApiResponse>(buy);
-    const targetSharesBuyBody = await json<ApiResponse>(targetSharesBuy);
+    const buyBody = await jsonOk<BuyMarketResponse>(buy);
+    const targetSharesBuyBody = await jsonOk<BuyMarketResponse>(targetSharesBuy);
 
     expect(badQuote.status).toBe(400);
     expect(tinyQuote.status).toBe(400);
@@ -314,9 +329,9 @@ maybeDescribe("server API", () => {
     expect(tinyBuy.status).toBe(400);
     expect(buy.status).toBe(201);
     expect(targetSharesBuy.status).toBe(201);
-    expect(typeof buyBody.data.quote.costMicro).toBe("string");
-    expect(buyBody.data.trade.userId).toBe(buyer.id);
-    expect(targetSharesBuyBody.data.quote.sharesMicro).toBe("2000000");
+    expect(typeof buyBody.quote.costMicro).toBe("string");
+    expect(buyBody.trade.userId).toBe(buyer.id);
+    expect(targetSharesBuyBody.quote.sharesMicro).toBe("2000000");
   });
 
   it("allows global market admins to manage other users' markets", async () => {
@@ -338,10 +353,10 @@ maybeDescribe("server API", () => {
       headers: authHeaders(admin.provider, admin.providerUserId),
       method: "POST",
     });
-    const closeBody = await json<ApiResponse>(closeResponse);
+    const closeBody = await jsonOk<CloseMarketResponse>(closeResponse);
 
     expect(closeResponse.status).toBe(200);
-    expect(closeBody.data.status).toBe("closed");
+    expect(closeBody.status).toBe("closed");
   });
 
   it("returns public portfolio and leaderboard reads", async () => {
@@ -357,16 +372,16 @@ maybeDescribe("server API", () => {
     });
 
     const portfolio = await app.request(`/users/${user.id}/portfolio`);
-    const portfolioBody = await json<ApiResponse>(portfolio);
+    const portfolioBody = await jsonOk<AccountResponse>(portfolio);
     const leaderboard = await app.request("/leaderboard?limit=5");
-    const leaderboardBody = await json<ApiResponse>(leaderboard);
+    const leaderboardBody = await jsonOk<LeaderboardResponse>(leaderboard);
 
     expect(portfolio.status).toBe(200);
-    expect(portfolioBody.data.user.id).toBe(user.id);
-    expect(portfolioBody.data.balance.availableAmountMicro).toBe(repToMicro(12n).toString());
+    expect(portfolioBody.user.id).toBe(user.id);
+    expect(portfolioBody.balance.availableAmountMicro).toBe(repToMicro(12n).toString());
     expect(leaderboard.status).toBe(200);
-    expect(leaderboardBody.data.entries.length).toBeLessThanOrEqual(5);
-    expect(typeof leaderboardBody.data.entries[0].balance.availableAmountMicro).toBe("string");
+    expect(leaderboardBody.entries.length).toBeLessThanOrEqual(5);
+    expect(typeof leaderboardBody.entries[0]?.balance.availableAmountMicro).toBe("string");
   });
 
   async function createMarket(provider: string, providerUserId: string) {
@@ -381,16 +396,11 @@ maybeDescribe("server API", () => {
       headers: authHeaders(provider, providerUserId),
       method: "POST",
     });
-    const body = await json<ApiResponse>(response);
+    const body = await jsonOk<CreateMarketResponse>(response);
 
     expect(response.status).toBe(201);
 
-    return body.data.market as {
-      id: string;
-      provider?: string;
-      providerUserId?: string;
-      status: string;
-    };
+    return body.market;
   }
 
   async function insertUser(label: string) {
@@ -447,13 +457,10 @@ function botHeaders() {
   };
 }
 
-type ApiResponse = {
-  data?: any;
-  error?: {
-    code: string;
-  };
-};
-
 async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
+}
+
+async function jsonOk<T>(response: Response): Promise<Serialized<T>> {
+  return (await json<ApiOk<T>>(response)).data;
 }
