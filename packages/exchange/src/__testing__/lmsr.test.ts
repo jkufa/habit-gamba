@@ -1,7 +1,7 @@
 import { repToMicro } from "@habit-gamba/db";
 import { describe, expect, it } from "vitest";
 
-import { applyBuy, getPrices, quoteBuy } from "../lmsr";
+import { applyBuy, getPrices, quoteBuy, quoteBuyShares } from "../lmsr";
 import type { LmsrMarketState } from "../lmsr";
 
 const initialState: LmsrMarketState = {
@@ -55,5 +55,14 @@ describe("LMSR engine", () => {
 
     expect(quote.costMicro).toBeLessThanOrEqual(budgetMicro);
     expect(quote.sharesMicro).toBeGreaterThan(0n);
+  });
+
+  it("quotes exact target shares", () => {
+    const sharesMicro = repToMicro(3n);
+    const quote = quoteBuyShares(initialState, "YES", sharesMicro);
+
+    expect(quote.sharesMicro).toBe(sharesMicro);
+    expect(quote.costMicro).toBeGreaterThan(0n);
+    expect(quote.pricesAfter.yes).toBeGreaterThan(quote.pricesBefore.yes);
   });
 });

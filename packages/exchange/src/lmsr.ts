@@ -54,6 +54,25 @@ export function quoteBuy(
   };
 }
 
+export function quoteBuyShares(
+  marketState: LmsrMarketState,
+  outcome: LmsrOutcome,
+  sharesMicro: bigint,
+): LmsrQuote {
+  assertValidState(marketState);
+  assertPositiveAmount(sharesMicro);
+
+  const nextState = applyShares(marketState, outcome, sharesMicro);
+
+  return {
+    costMicro: costDeltaCeil(marketState, nextState),
+    outcome,
+    pricesAfter: getPrices(nextState),
+    pricesBefore: getPrices(marketState),
+    sharesMicro,
+  };
+}
+
 export function applyBuy(
   marketState: LmsrMarketState,
   outcome: LmsrOutcome,

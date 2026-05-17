@@ -9,10 +9,15 @@ export { checkExchangeReferenceInvariant } from "./invariants";
 export type {
   ExchangeBuyInput,
   ExchangeBuyResult,
+  ExchangeBuySharesInput,
   ExchangeConfig,
   ExchangeGetMarketInput,
+  ExchangeListPositionsInput,
+  ExchangeListPositionsResult,
   ExchangeMarketView,
+  ExchangePositionView,
   ExchangeQuoteBuyInput,
+  ExchangeQuoteBuySharesInput,
   ExchangeQuoteResult,
   ExchangeService,
 } from "./types";

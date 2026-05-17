@@ -11,8 +11,11 @@ export type ExchangeConfig = {
 
 export type ExchangeService = {
   buy: (input: ExchangeBuyInput) => Promise<ExchangeBuyResult>;
+  buyShares: (input: ExchangeBuySharesInput) => Promise<ExchangeBuyResult>;
   getMarket: (input: ExchangeGetMarketInput) => Promise<ExchangeMarketView>;
+  listPositions: (input: ExchangeListPositionsInput) => Promise<ExchangeListPositionsResult>;
   quoteBuy: (input: ExchangeQuoteBuyInput) => Promise<ExchangeQuoteResult>;
+  quoteBuyShares: (input: ExchangeQuoteBuySharesInput) => Promise<ExchangeQuoteResult>;
 };
 
 export type ExchangeBuyInput = {
@@ -25,12 +28,26 @@ export type ExchangeBuyInput = {
   userId: string;
 };
 
+export type ExchangeBuySharesInput = Omit<ExchangeBuyInput, "amountMicro"> & {
+  sharesMicro: bigint;
+};
+
 export type ExchangeQuoteBuyInput = {
   amountMicro: bigint;
   contractId: string;
   db: DbClient;
   now?: Date;
   outcome: LmsrOutcome;
+};
+
+export type ExchangeQuoteBuySharesInput = Omit<ExchangeQuoteBuyInput, "amountMicro"> & {
+  sharesMicro: bigint;
+};
+
+export type ExchangeListPositionsInput = {
+  db: DbClient;
+  limit?: number;
+  userId: string;
 };
 
 export type ExchangeGetMarketInput =
@@ -57,6 +74,16 @@ export type ExchangeMarketView = Market & {
 
 export type ExchangeQuoteResult = LmsrQuote & {
   market: ExchangeMarketView;
+};
+
+export type ExchangePositionView = {
+  contract: MarketContract;
+  market: ExchangeMarketView;
+  position: Position;
+};
+
+export type ExchangeListPositionsResult = {
+  positions: ExchangePositionView[];
 };
 
 export type ExchangeBuyResult = {

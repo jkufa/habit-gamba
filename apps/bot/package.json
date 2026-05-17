@@ -4,12 +4,21 @@
   "scripts": {
     "build": "bun run check-types",
     "check-types": "tsc --noEmit",
-    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "deploy:commands": "bun --env-file=../../.env --env-file=.env src/deploy-commands.ts",
+    "dev": "bun --env-file=../../.env --env-file=.env --watch src/index.ts",
     "lint": "oxlint .",
-    "start": "bun --env-file=../../.env src/index.ts",
+    "start": "bun --env-file=../../.env --env-file=.env src/index.ts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@habit-gamba/env": "workspace:*"
+    "@habit-gamba/contracts": "workspace:*",
+    "@habit-gamba/db": "workspace:*",
+    "@habit-gamba/env": "workspace:*",
+    "@habit-gamba/exchange": "workspace:*",
+    "@habit-gamba/resolution": "workspace:*",
+    "@habit-gamba/users": "workspace:*",
+    "@habit-gamba/wallet": "workspace:*",
+    "discord.js": "^14.26.4",
+    "drizzle-orm": "^0.45.1"
   }
 }

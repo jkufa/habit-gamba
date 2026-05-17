@@ -1,6 +1,12 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
-  "globalEnv": ["DATABASE_URL"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "DISCORD_APPLICATION_ID",
+    "DISCORD_BOT_TOKEN",
+    "DISCORD_DEV_GUILD_ID",
+    "DEV_GUILD_ID"
+  ],
   "ui": "tui",
   "tasks": {
     "build": {

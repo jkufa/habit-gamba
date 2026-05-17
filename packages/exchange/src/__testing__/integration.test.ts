@@ -70,6 +70,39 @@ maybeDescribe("exchange buy flow", () => {
     expect(balance.availableAmountMicro).toBe(repToMicro(50n) - result.quote.costMicro);
   });
 
+  it("buys exact target shares and lists open positions", async () => {
+    const userId = await createTestUser("buy-shares");
+    const market = await createOpenMarket(userId, "buy-shares");
+    const yesContract = market.contracts[0];
+
+    await fundUser(userId, repToMicro(50n), "buy-shares");
+
+    const quote = await exchange.quoteBuyShares({
+      contractId: yesContract.id,
+      db: client.db,
+      now: new Date("2030-01-01T00:00:01.000Z"),
+      outcome: "YES",
+      sharesMicro: repToMicro(3n),
+    });
+    const result = await exchange.buyShares({
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey: `exchange-test:${userId}:buy-shares`,
+      now: new Date("2030-01-01T00:00:01.000Z"),
+      outcome: "YES",
+      sharesMicro: repToMicro(3n),
+      userId,
+    });
+    const positions = await exchange.listPositions({ db: client.db, userId });
+
+    expect(result.quote.costMicro).toBe(quote.costMicro);
+    expect(result.quote.sharesMicro).toBe(quote.sharesMicro);
+    expect(result.position.quantityMicro).toBe(repToMicro(3n));
+    expect(positions.positions).toHaveLength(1);
+    expect(positions.positions[0]?.market.id).toBe(market.id);
+    expect(positions.positions[0]?.contract.outcome).toBe("YES");
+  });
+
   it("rejects markets that do not accept bets", async () => {
     const userId = await createTestUser("closed");
     const market = await createOpenMarket(userId, "closed");

@@ -18,6 +18,7 @@ export type ResolutionConfig = {
 
 export type ResolveMarketInput = ResolutionConfig & {
   db: DbClient;
+  evidence?: Record<string, unknown>;
   marketId: string;
   outcome: ResolutionOutcome;
   resolvedByUserId: string;

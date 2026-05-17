@@ -76,6 +76,7 @@ export async function resolveMarket(input: ResolveMarketInput): Promise<ResolveM
     const [resolution] = await tx
       .insert(schema.resolutions)
       .values({
+        evidence: input.evidence ?? {},
         id: resolutionId,
         marketId: input.marketId,
         resolvedAt,
