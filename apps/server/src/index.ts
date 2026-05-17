@@ -1,26 +1,15 @@
 import { createDbClient } from "@habit-gamba/db";
 import { loadServerEnv } from "@habit-gamba/env";
-import { Hono } from "hono";
+
+import { createApp } from "./app";
 
 const env = loadServerEnv();
-const { sql } = createDbClient({ databaseUrl: env.DATABASE_URL });
-
-const app = new Hono();
-
-app.get("/health", (context) =>
-  context.json({
-    ok: true,
-    service: "server",
-  }),
-);
-
-app.get("/health/db", async (context) => {
-  await sql`select 1`;
-
-  return context.json({
-    ok: true,
-    service: "postgres",
-  });
+const { db, sql } = createDbClient({ databaseUrl: env.DATABASE_URL });
+const app = createApp({
+  db,
+  pingDb: async () => {
+    await sql`select 1`;
+  },
 });
 
 const server = Bun.serve({
