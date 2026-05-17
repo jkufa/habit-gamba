@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { loadBaseEnv, loadBotEnv } from "../src/index";
+import { loadBaseEnv, loadBotEnv, loadBotRuntimeEnv, loadServerEnv } from "../src/index";
 
 describe("loadBaseEnv", () => {
   it("accepts valid local config", () => {
@@ -48,5 +48,52 @@ describe("loadBotEnv", () => {
         DISCORD_BOT_TOKEN: "token",
       }).DISCORD_DEV_GUILD_ID,
     ).toBe("guild");
+  });
+
+  it("requires API config for bot runtime", () => {
+    expect(
+      loadBotRuntimeEnv({
+        API_BASE_URL: "http://localhost:3000",
+        BOT_API_TOKEN: "bot-token",
+        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
+        DISCORD_APPLICATION_ID: "app",
+        DISCORD_BOT_TOKEN: "token",
+        DISCORD_DEV_GUILD_ID: "guild",
+      }),
+    ).toMatchObject({
+      API_BASE_URL: "http://localhost:3000",
+      BOT_API_TOKEN: "bot-token",
+      DISCORD_DEV_GUILD_ID: "guild",
+    });
+  });
+
+  it("rejects missing API config for bot runtime", () => {
+    expect(() =>
+      loadBotRuntimeEnv({
+        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
+        DISCORD_APPLICATION_ID: "app",
+        DISCORD_BOT_TOKEN: "token",
+        DISCORD_DEV_GUILD_ID: "guild",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("loadServerEnv", () => {
+  it("accepts explicit bot API token for server", () => {
+    expect(
+      loadServerEnv({
+        BOT_API_TOKEN: "bot-token",
+        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
+      }).BOT_API_TOKEN,
+    ).toBe("bot-token");
+  });
+
+  it("rejects missing bot API token", () => {
+    expect(() =>
+      loadServerEnv({
+        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
+      }),
+    ).toThrow();
   });
 });

@@ -20,6 +20,20 @@ export class ExchangeIdempotencyConflictError extends Error {
   }
 }
 
+export class ExchangeTradeAmountTooSmallError extends RangeError {
+  readonly code = "EXCHANGE_TRADE_AMOUNT_TOO_SMALL" as const;
+
+  constructor(
+    readonly details: {
+      amountMicro: string;
+      minimumAmountMicro: string;
+    },
+  ) {
+    super(`amountMicro must be at least ${details.minimumAmountMicro} (0.01 REP/contracts)`);
+    this.name = "ExchangeTradeAmountTooSmallError";
+  }
+}
+
 export class MarketNotTradeableError extends Error {
   readonly code = "MARKET_NOT_TRADEABLE" as const;
 
@@ -31,8 +45,22 @@ export class MarketNotTradeableError extends Error {
       status: string;
     },
   ) {
-    super("Market does not accept bets");
+    super("Market does not accept trades");
     this.name = "MarketNotTradeableError";
+  }
+}
+
+export class ExchangeSelfTradeError extends Error {
+  readonly code = "EXCHANGE_SELF_TRADE" as const;
+
+  constructor(
+    readonly details: {
+      marketId: string;
+      userId: string;
+    },
+  ) {
+    super("Market creator cannot trade on their own market");
+    this.name = "ExchangeSelfTradeError";
   }
 }
 

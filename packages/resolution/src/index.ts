@@ -5,7 +5,12 @@ export {
   ResolutionMarketNotFoundError,
 } from "./lib/errors";
 export { checkResolutionInvariant } from "./lib/invariants";
-export { autoCancelExpiredMarkets, cancelMarket, resolveMarket } from "./lib/service";
+export {
+  autoCancelExpiredMarkets,
+  cancelMarket,
+  previewCancelMarket,
+  resolveMarket,
+} from "./lib/service";
 export type {
   AutoCancelExpiredMarketsInput,
   AutoCancelExpiredMarketsResult,
@@ -17,6 +22,8 @@ export type {
   Market,
   MarketContract,
   Position,
+  PreviewCancelMarketInput,
+  PreviewCancelMarketResult,
   Resolution,
   ResolutionConfig,
   ResolutionExecutor,

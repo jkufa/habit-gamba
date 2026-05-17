@@ -69,6 +69,24 @@ export const users = pgTable(
   ],
 );
 
+export const userRoles = pgTable(
+  "user_roles",
+  {
+    id: idColumn(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    role: text("role").notNull(),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
+  },
+  (table) => [
+    unique("user_roles_user_role_unique").on(table.userId, table.role),
+    index("user_roles_user_idx").on(table.userId),
+    index("user_roles_role_idx").on(table.role),
+  ],
+);
+
 export const balances = pgTable(
   "balances",
   {

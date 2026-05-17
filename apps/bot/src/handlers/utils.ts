@@ -13,8 +13,8 @@ import {
   type ThreadChannel,
 } from "discord.js";
 
-import { autocompleteMarkets, getDiscordUser, marketSummaryFields } from "../service";
-import { isGuildAdminPermission, type Actor } from "../permissions";
+import { autocompleteMarkets, BotApiError, getDiscordUser, marketSummaryFields } from "../service";
+import type { Actor } from "../permissions";
 import type { BotHandlerContext } from "./context";
 
 export type RepliableBotInteraction =
@@ -37,7 +37,6 @@ export async function requireActor(
 
   return {
     discordUserId: interaction.user.id,
-    isGuildAdmin: isGuildAdminPermission(interaction.memberPermissions?.bitfield),
     userId: user.id,
   };
 }
@@ -132,18 +131,31 @@ export function requiredField(interaction: ModalSubmitInteraction, customId: str
   return requireValue(field(interaction, customId), customId);
 }
 
-export function parseBoolean(value: string | null) {
-  return ["yes", "true", "1", "y", "open"].includes(value?.trim().toLowerCase() ?? "");
-}
+export function parseCloseDate(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
 
-export function parseDate(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.valueOf())) {
-    throw new RangeError("Date must be valid ISO date/time");
+  if (!match) {
+    throw new RangeError("Close date must use MM/DD/YYYY. Markets close at 11:59:59pm ET.");
   }
 
-  return date;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    throw new RangeError("Close date must be a real date in MM/DD/YYYY format.");
+  }
+
+  return zonedTimeToUtc(year, month, day, 23, 59, 59, "America/New_York");
 }
 
 export function parseMode(value: string) {
@@ -180,7 +192,7 @@ export function getDiscordMetadata(metadata: Record<string, unknown>) {
 }
 
 export async function replyError(interaction: Interaction, error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = userFacingErrorMessage(error);
   console.error("discord interaction error", error);
 
   if (interaction.isRepliable()) {
@@ -195,6 +207,43 @@ export async function replyError(interaction: Interaction, error: unknown) {
       await interaction.reply(payload);
     }
   }
+}
+
+export function userFacingErrorMessage(error: unknown) {
+  if (error instanceof BotApiError && error.code === "MARKET_NOT_TRADEABLE") {
+    const details = error.details as {
+      closesAt?: string | null;
+      now?: string;
+      status?: string;
+    };
+
+    if (details.status === "draft") {
+      return "This market is not open yet.";
+    }
+
+    if (details.status === "closed") {
+      return "This market is closed.";
+    }
+
+    if (details.status === "resolved") {
+      return "This market is already resolved.";
+    }
+
+    if (details.status === "void") {
+      return "This market was cancelled.";
+    }
+
+    if (
+      details.status === "open" &&
+      details.closesAt &&
+      details.now &&
+      new Date(details.now) >= new Date(details.closesAt)
+    ) {
+      return "This market is past its close time.";
+    }
+  }
+
+  return error instanceof Error ? error.message : String(error);
 }
 
 function getThreadManager(channel: unknown): {
@@ -219,4 +268,43 @@ function getThreadManager(channel: unknown): {
   }
 
   return null;
+}
+
+function zonedTimeToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string,
+): Date {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const offset = getTimeZoneOffsetMs(utcGuess, timeZone);
+
+  return new Date(utcGuess.getTime() - offset);
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const zonedAsUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+
+  return zonedAsUtc - date.getTime();
 }

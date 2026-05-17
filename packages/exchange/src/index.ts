@@ -3,6 +3,8 @@ export {
   ExchangeConfigError,
   ExchangeIdempotencyConflictError,
   ExchangeMarketNotFoundError,
+  ExchangeSelfTradeError,
+  ExchangeTradeAmountTooSmallError,
   MarketNotTradeableError,
 } from "./errors";
 export { checkExchangeReferenceInvariant } from "./invariants";

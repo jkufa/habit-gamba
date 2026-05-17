@@ -46,6 +46,17 @@ export type CancelMarketResult = {
   market: Market;
 };
 
+export type PreviewCancelMarketInput = ResolutionConfig & {
+  db: DbClient;
+  marketId: string;
+};
+
+export type PreviewCancelMarketResult = {
+  creatorPenaltyMicro: bigint;
+  creatorNetMicro: bigint;
+  refundTotalMicro: bigint;
+};
+
 export type AutoCancelExpiredMarketsInput = ResolutionConfig & {
   db: DbClient;
   limit?: number;

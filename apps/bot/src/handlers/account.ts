@@ -1,7 +1,7 @@
 import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
 import { formatMicro } from "../money";
-import { getAccount, registerAccount, type DiscordIdentity } from "../service";
+import { getAccount, getDiscordUser, registerAccount, type DiscordIdentity } from "../service";
 import { requireActor } from "./utils";
 import type { BotHandlerContext } from "./context";
 
@@ -12,6 +12,26 @@ export async function handleAccount(
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "register") {
+    const existingUser = await getDiscordUser({
+      ...context.services,
+      discordUserId: interaction.user.id,
+    });
+
+    if (existingUser) {
+      const account = await getAccount({
+        ...context.services,
+        actor: {
+          discordUserId: interaction.user.id,
+          userId: existingUser.id,
+        },
+      });
+      await interaction.reply({
+        content: `You're already registered. Balance: ${formatMicro(account.balance.availableAmountMicro)}`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     const result = await registerAccount({
       ...context.services,
       identity: getIdentity(interaction),

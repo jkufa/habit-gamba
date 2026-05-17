@@ -25,6 +25,7 @@ export const commandData = [
     .addSubcommand(buyMarketCommand)
     .addSubcommand(sellMarketCommand)
     .addSubcommand(closeMarketCommand)
+    .addSubcommand(refreshMarketCommand)
     .addSubcommand(resolveMarketCommand)
     .addSubcommand(cancelMarketCommand),
 ].map((command) => command.toJSON());
@@ -34,14 +35,10 @@ function createMarketCommand(
 ): SlashCommandSubcommandBuilder {
   return command
     .setName("create")
-    .setDescription("Create a binary market")
+    .setDescription("Create a YES/NO market")
     .addStringOption((option) => option.setName("title").setDescription("Market question"))
     .addStringOption((option) => option.setName("description").setDescription("Market details"))
-    .addStringOption((option) => option.setName("slug").setDescription("Short unique slug"))
-    .addBooleanOption((option) => option.setName("open").setDescription("Open immediately"))
-    .addStringOption((option) =>
-      option.setName("closes_at").setDescription("ISO date/time, required when opening"),
-    );
+    .addBooleanOption((option) => option.setName("open").setDescription("Open immediately"));
 }
 
 function openMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
@@ -51,7 +48,9 @@ function openMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommand
     .addStringOption((option) =>
       option.setName("market").setDescription("Market").setAutocomplete(true).setRequired(false),
     )
-    .addStringOption((option) => option.setName("closes_at").setDescription("ISO date/time"));
+    .addStringOption((option) =>
+      option.setName("closes_at").setDescription("Close date (MM/DD/YYYY)"),
+    );
 }
 
 function viewMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
@@ -116,6 +115,17 @@ function closeMarketCommand(command: SlashCommandSubcommandBuilder): SlashComman
     .setDescription("Close a market")
     .addStringOption((option) =>
       option.setName("market").setDescription("Market").setAutocomplete(true),
+    );
+}
+
+function refreshMarketCommand(
+  command: SlashCommandSubcommandBuilder,
+): SlashCommandSubcommandBuilder {
+  return command
+    .setName("refresh")
+    .setDescription("Refresh market thread from API trades")
+    .addStringOption((option) =>
+      option.setName("market").setDescription("Market").setAutocomplete(true).setRequired(true),
     );
 }
 

@@ -6,6 +6,7 @@ import { createApp } from "./app";
 const env = loadServerEnv();
 const { db, sql } = createDbClient({ databaseUrl: env.DATABASE_URL });
 const app = createApp({
+  botApiToken: env.BOT_API_TOKEN,
   db,
   pingDb: async () => {
     await sql`select 1`;

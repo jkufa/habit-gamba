@@ -1,4 +1,4 @@
-import { createId, schema } from "@habit-gamba/db";
+import { createId, REP_SCALE, schema } from "@habit-gamba/db";
 import { debitRep } from "@habit-gamba/wallet";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
@@ -6,6 +6,8 @@ import {
   ExchangeConfigError,
   ExchangeIdempotencyConflictError,
   ExchangeMarketNotFoundError,
+  ExchangeSelfTradeError,
+  ExchangeTradeAmountTooSmallError,
   MarketNotTradeableError,
 } from "./errors";
 import { getPrices, quoteBuy as quoteLmsrBuy, quoteBuyShares as quoteLmsrBuyShares } from "./lmsr";
@@ -31,6 +33,7 @@ import type {
 import type { LmsrMarketState, LmsrQuote } from "./lmsr";
 
 const TRADE_LEDGER_SOURCE_TYPE = "exchange_trade";
+const MIN_TRADE_AMOUNT_MICRO = REP_SCALE / 100n;
 
 type BuyPayload = {
   contractId: string;
@@ -78,6 +81,8 @@ async function quoteBuy(
   config: ExchangeConfig,
   input: ExchangeQuoteBuyInput,
 ): Promise<ExchangeQuoteResult> {
+  assertMinimumTradeAmount(input.amountMicro);
+
   const now = input.now ?? new Date();
   const loaded = await loadMarketByContractId(input.db, input.contractId);
 
@@ -99,6 +104,8 @@ async function quoteBuyShares(
   config: ExchangeConfig,
   input: ExchangeQuoteBuySharesInput,
 ): Promise<ExchangeQuoteResult> {
+  assertMinimumTradeAmount(input.sharesMicro);
+
   const now = input.now ?? new Date();
   const loaded = await loadMarketByContractId(input.db, input.contractId);
 
@@ -164,6 +171,8 @@ async function listPositions(
 }
 
 async function buy(config: ExchangeConfig, input: ExchangeBuyInput): Promise<ExchangeBuyResult> {
+  assertMinimumTradeAmount(input.amountMicro);
+
   return executeBuy(config, input, {
     payload: {
       contractId: input.contractId,
@@ -180,6 +189,8 @@ async function buyShares(
   config: ExchangeConfig,
   input: ExchangeBuySharesInput,
 ): Promise<ExchangeBuyResult> {
+  assertMinimumTradeAmount(input.sharesMicro);
+
   return executeBuy(config, input, {
     payload: {
       contractId: input.contractId,
@@ -217,6 +228,7 @@ async function executeBuy(
     const loaded = await loadMarketByContractId(tx, input.contractId, { lock: true });
 
     assertAcceptsBets(loaded.market, now);
+    assertNotCreatorTrade(loaded.market, input.userId);
 
     const quote = options.quote(loaded.contracts);
     const boughtContract = getContractByOutcome(loaded.contracts, input.outcome);
@@ -427,8 +439,25 @@ function toMarketView(
   return {
     ...market,
     contracts,
-    prices: getPrices(toLmsrState(config, contracts)),
+    prices: getSettlementPrices(market.metadata) ?? getPrices(toLmsrState(config, contracts)),
   };
+}
+
+function getSettlementPrices(metadata: Record<string, unknown>) {
+  const prices = metadata.settlementPrices;
+
+  if (!prices || typeof prices !== "object" || Array.isArray(prices)) {
+    return null;
+  }
+
+  const record = prices as Record<string, unknown>;
+
+  return typeof record.no === "number" &&
+    Number.isFinite(record.no) &&
+    typeof record.yes === "number" &&
+    Number.isFinite(record.yes)
+    ? { no: record.no, yes: record.yes }
+    : null;
 }
 
 function toLmsrState(
@@ -452,6 +481,21 @@ function assertAcceptsBets(market: Market, now: Date) {
       marketId: market.id,
       now,
       status: market.status,
+    });
+  }
+}
+
+function assertNotCreatorTrade(market: Market, userId: string) {
+  if (market.creatorUserId === userId) {
+    throw new ExchangeSelfTradeError({ marketId: market.id, userId });
+  }
+}
+
+function assertMinimumTradeAmount(amountMicro: bigint) {
+  if (amountMicro < MIN_TRADE_AMOUNT_MICRO) {
+    throw new ExchangeTradeAmountTooSmallError({
+      amountMicro: amountMicro.toString(),
+      minimumAmountMicro: MIN_TRADE_AMOUNT_MICRO.toString(),
     });
   }
 }

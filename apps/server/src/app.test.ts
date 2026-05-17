@@ -1,4 +1,5 @@
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
+import { grantUserRole } from "@habit-gamba/users";
 import { creditRep } from "@habit-gamba/wallet";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -12,6 +13,7 @@ const migrationsFolder = new URL("../../../packages/db/drizzle", import.meta.url
 maybeDescribe("server API", () => {
   const client = createDbClient({ databaseUrl: databaseUrl ?? "", max: 8 });
   const app = createApp({
+    botApiToken: "server-test-bot-token",
     db: client.db,
     pingDb: async () => {
       await client.sql`select 1`;
@@ -61,6 +63,38 @@ maybeDescribe("server API", () => {
     expect((await json<ApiResponse>(missingAuth)).error?.code).toBe("UNAUTHORIZED");
   });
 
+  it("registers provider-neutral accounts through trusted bot auth", async () => {
+    const missingToken = await requestJson("/accounts/register", {
+      body: {
+        displayName: "Discord User",
+        provider: "discord",
+        providerUserId: `discord-${createId()}`,
+      },
+      method: "POST",
+    });
+    const providerUserId = `discord-${createId()}`;
+    const handle = `discord-user-${createId().toLowerCase()}`;
+    const registered = await requestJson("/accounts/register", {
+      body: {
+        displayName: "Discord User",
+        handle,
+        provider: "discord",
+        providerUserId,
+      },
+      headers: botHeaders(),
+      method: "POST",
+    });
+    const account = await app.request("/accounts/me", {
+      headers: authHeaders("discord", providerUserId),
+    });
+    const accountBody = await json<ApiResponse>(account);
+
+    expect(missingToken.status).toBe(401);
+    expect(registered.status).toBe(201);
+    expect(account.status).toBe(200);
+    expect(accountBody.data.balance.availableAmountMicro).toBe(repToMicro(1_000n).toString());
+  });
+
   it("creates draft markets, opens them by creator, reads without auth, and serializes bigints", async () => {
     const creator = await insertUser("creator");
     const market = await createMarket(creator.provider, creator.providerUserId);
@@ -105,17 +139,107 @@ maybeDescribe("server API", () => {
     expect(resolveResponse.status).toBe(403);
   });
 
+  it("returns hydrated market views after creator resolve and cancel", async () => {
+    const resolver = await insertUser("resolver-owner");
+    const bettor = await insertUser("resolver-bettor");
+    const canceler = await insertUser("cancel-owner");
+    const resolveMarket = await createMarket(resolver.provider, resolver.providerUserId);
+    const cancelMarket = await createMarket(canceler.provider, canceler.providerUserId);
+
+    await creditRep({
+      amountMicro: repToMicro(100n),
+      db: client.db,
+      idempotencyKey: `server-test:${bettor.id}:resolve-fund`,
+      sourceId: `server-test:${bettor.id}:resolve-fund`,
+      sourceType: "server_test_fund",
+      userId: bettor.id,
+    });
+    await requestJson(`/markets/${resolveMarket.id}/open`, {
+      body: {
+        closesAt: "2099-01-01T00:00:00.000Z",
+      },
+      headers: authHeaders(resolver.provider, resolver.providerUserId),
+      method: "POST",
+    });
+    const buyResponse = await requestJson(`/markets/${resolveMarket.id}/buy`, {
+      body: {
+        amountMicro: repToMicro(10n).toString(),
+        outcome: "NO",
+      },
+      headers: {
+        ...authHeaders(bettor.provider, bettor.providerUserId),
+        "Idempotency-Key": `server-test:${bettor.id}:resolve-buy`,
+      },
+      method: "POST",
+    });
+    const buyBody = await json<ApiResponse>(buyResponse);
+
+    const resolveResponse = await requestJson(`/markets/${resolveMarket.id}/resolve`, {
+      body: {
+        evidence: {
+          note: "proof note",
+        },
+        outcome: "YES",
+      },
+      headers: authHeaders(resolver.provider, resolver.providerUserId),
+      method: "POST",
+    });
+    const cancelResponse = await requestJson(`/markets/${cancelMarket.id}/cancel`, {
+      body: {
+        reason: "creator cancelled",
+      },
+      headers: authHeaders(canceler.provider, canceler.providerUserId),
+      method: "POST",
+    });
+    const resolveBody = await json<ApiResponse>(resolveResponse);
+    const cancelBody = await json<ApiResponse>(cancelResponse);
+    const resolvedRead = await app.request(`/markets/${resolveMarket.id}`);
+    const resolvedReadBody = await json<ApiResponse>(resolvedRead);
+    const idempotentResolve = await requestJson(`/markets/${resolveMarket.id}/resolve`, {
+      body: {
+        outcome: "YES",
+      },
+      headers: authHeaders(resolver.provider, resolver.providerUserId),
+      method: "POST",
+    });
+    const idempotentResolveBody = await json<ApiResponse>(idempotentResolve);
+
+    expect(buyResponse.status).toBe(201);
+    expect(resolveResponse.status).toBe(201);
+    expect(resolveBody.data.market.status).toBe("resolved");
+    expect(resolveBody.data.market.contracts).toHaveLength(2);
+    expect(resolveBody.data.market.prices).toEqual(buyBody.data.market.prices);
+    expect(resolveBody.data.market.prices).toMatchObject({
+      no: expect.any(Number),
+      yes: expect.any(Number),
+    });
+    expect(resolveBody.data.market.prices.yes).toBeLessThan(0.5);
+    expect(resolveBody.data.market.prices.no).toBeGreaterThan(0.5);
+    expect(resolvedReadBody.data.prices).toEqual(buyBody.data.market.prices);
+    expect(idempotentResolve.status).toBe(200);
+    expect(idempotentResolveBody.data.market.prices).toEqual(buyBody.data.market.prices);
+    expect(typeof resolveBody.data.market.contracts[0].shareSupplyMicro).toBe("string");
+    expect(cancelResponse.status).toBe(201);
+    expect(cancelBody.data.market.status).toBe("void");
+    expect(cancelBody.data.market.contracts).toHaveLength(2);
+    expect(cancelBody.data.market.prices).toMatchObject({
+      no: expect.any(Number),
+      yes: expect.any(Number),
+    });
+  });
+
   it("validates quote and buy requests, requires idempotency for buys, and returns buy result", async () => {
-    const creator = await insertUser("buyer");
+    const creator = await insertUser("buyer-creator");
+    const buyer = await insertUser("buyer");
     const market = await createMarket(creator.provider, creator.providerUserId);
 
     await creditRep({
       amountMicro: repToMicro(100n),
       db: client.db,
-      idempotencyKey: `server-test:${creator.id}:fund`,
-      sourceId: `server-test:${creator.id}:fund`,
+      idempotencyKey: `server-test:${buyer.id}:fund`,
+      sourceId: `server-test:${buyer.id}:fund`,
       sourceType: "server_test_fund",
-      userId: creator.id,
+      userId: buyer.id,
     });
     await requestJson(`/markets/${market.id}/open`, {
       body: {
@@ -132,12 +256,30 @@ maybeDescribe("server API", () => {
       },
       method: "POST",
     });
+    const tinyQuote = await requestJson(`/markets/${market.id}/quote`, {
+      body: {
+        amountMicro: "9999",
+        outcome: "YES",
+      },
+      method: "POST",
+    });
     const missingKey = await requestJson(`/markets/${market.id}/buy`, {
       body: {
         amountMicro: "1000000",
         outcome: "YES",
       },
-      headers: authHeaders(creator.provider, creator.providerUserId),
+      headers: authHeaders(buyer.provider, buyer.providerUserId),
+      method: "POST",
+    });
+    const tinyBuy = await requestJson(`/markets/${market.id}/buy`, {
+      body: {
+        amountMicro: "9999",
+        outcome: "YES",
+      },
+      headers: {
+        ...authHeaders(buyer.provider, buyer.providerUserId),
+        "Idempotency-Key": `server-test:${buyer.id}:tiny-buy`,
+      },
       method: "POST",
     });
     const buy = await requestJson(`/markets/${market.id}/buy`, {
@@ -146,18 +288,60 @@ maybeDescribe("server API", () => {
         outcome: "YES",
       },
       headers: {
-        ...authHeaders(creator.provider, creator.providerUserId),
-        "Idempotency-Key": `server-test:${creator.id}:buy`,
+        ...authHeaders(buyer.provider, buyer.providerUserId),
+        "Idempotency-Key": `server-test:${buyer.id}:buy`,
+      },
+      method: "POST",
+    });
+    const targetSharesBuy = await requestJson(`/markets/${market.id}/buy`, {
+      body: {
+        amountMicro: "2000000",
+        mode: "target_shares",
+        outcome: "NO",
+      },
+      headers: {
+        ...authHeaders(buyer.provider, buyer.providerUserId),
+        "Idempotency-Key": `server-test:${buyer.id}:target-shares-buy`,
       },
       method: "POST",
     });
     const buyBody = await json<ApiResponse>(buy);
+    const targetSharesBuyBody = await json<ApiResponse>(targetSharesBuy);
 
     expect(badQuote.status).toBe(400);
+    expect(tinyQuote.status).toBe(400);
     expect(missingKey.status).toBe(400);
+    expect(tinyBuy.status).toBe(400);
     expect(buy.status).toBe(201);
+    expect(targetSharesBuy.status).toBe(201);
     expect(typeof buyBody.data.quote.costMicro).toBe("string");
-    expect(buyBody.data.trade.userId).toBe(creator.id);
+    expect(buyBody.data.trade.userId).toBe(buyer.id);
+    expect(targetSharesBuyBody.data.quote.sharesMicro).toBe("2000000");
+  });
+
+  it("allows global market admins to manage other users' markets", async () => {
+    const creator = await insertUser("admin-owner");
+    const admin = await insertUser("market-admin");
+    const market = await createMarket(creator.provider, creator.providerUserId);
+
+    await grantUserRole({ db: client.db, role: "market_admin", userId: admin.id });
+    await requestJson(`/markets/${market.id}/open`, {
+      body: {
+        closesAt: "2099-01-01T00:00:00.000Z",
+      },
+      headers: authHeaders(admin.provider, admin.providerUserId),
+      method: "POST",
+    });
+
+    const closeResponse = await requestJson(`/markets/${market.id}/close`, {
+      body: {},
+      headers: authHeaders(admin.provider, admin.providerUserId),
+      method: "POST",
+    });
+    const closeBody = await json<ApiResponse>(closeResponse);
+
+    expect(closeResponse.status).toBe(200);
+    expect(closeBody.data.status).toBe("closed");
   });
 
   it("returns public portfolio and leaderboard reads", async () => {
@@ -254,6 +438,12 @@ function authHeaders(provider: string, providerUserId: string) {
   return {
     "X-Provider": provider,
     "X-Provider-User-Id": providerUserId,
+  };
+}
+
+function botHeaders() {
+  return {
+    Authorization: "Bearer server-test-bot-token",
   };
 }
 

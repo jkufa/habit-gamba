@@ -26,7 +26,10 @@ import type {
   Market,
   MarketContract,
   Position,
+  PreviewCancelMarketInput,
+  PreviewCancelMarketResult,
   ResolutionConfig,
+  ResolutionExecutor,
   ResolutionOutcome,
   ResolveMarketInput,
   ResolveMarketResult,
@@ -212,6 +215,22 @@ export async function cancelMarket(input: CancelMarketInput): Promise<CancelMark
   });
 }
 
+export async function previewCancelMarket(
+  input: PreviewCancelMarketInput,
+): Promise<PreviewCancelMarketResult> {
+  const refundRows = await loadRefundRows(input.db, input.marketId);
+  const refundTotalMicro = refundRows.reduce((sum, row) => sum + row.amountMicro, 0n);
+  const creatorRefundMicro =
+    refundRows.find((row) => row.userId === row.marketCreatorUserId)?.amountMicro ?? 0n;
+  const creatorPenaltyMicro = calculatePenalty(refundTotalMicro, normalizePenaltyBps(input));
+
+  return {
+    creatorNetMicro: creatorRefundMicro - creatorPenaltyMicro,
+    creatorPenaltyMicro,
+    refundTotalMicro,
+  };
+}
+
 export async function autoCancelExpiredMarkets(
   input: AutoCancelExpiredMarketsInput,
 ): Promise<AutoCancelExpiredMarketsResult> {
@@ -361,22 +380,25 @@ async function loadPositionsForUpdate(
 }
 
 async function loadRefundRows(
-  tx: DbTransaction,
+  tx: ResolutionExecutor,
   marketId: string,
-): Promise<Array<{ amountMicro: bigint; userId: string }>> {
+): Promise<Array<{ amountMicro: bigint; marketCreatorUserId: string; userId: string }>> {
   const rows = await tx
     .select({
       amountMicro: sql<bigint>`coalesce(sum(-${schema.trades.cashDeltaMicro}), 0)`,
+      marketCreatorUserId: schema.markets.creatorUserId,
       userId: schema.trades.userId,
     })
     .from(schema.trades)
+    .innerJoin(schema.markets, eq(schema.markets.id, schema.trades.marketId))
     .where(and(eq(schema.trades.marketId, marketId), eq(schema.trades.side, "buy")))
-    .groupBy(schema.trades.userId)
+    .groupBy(schema.trades.userId, schema.markets.creatorUserId)
     .orderBy(asc(schema.trades.userId));
 
   return rows
     .map((row) => ({
       amountMicro: BigInt(row.amountMicro),
+      marketCreatorUserId: row.marketCreatorUserId,
       userId: row.userId,
     }))
     .filter((row) => row.amountMicro > 0n);

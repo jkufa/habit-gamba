@@ -1,6 +1,6 @@
 import type { Interaction } from "discord.js";
 
-import { autocompleteMarkets } from "../service";
+import { autocompleteMarkets, getDiscordUser } from "../service";
 import { handleAccount } from "./account";
 import { handleMarket, handleMarketButton, handleMarketModal } from "./market";
 import { handlePosition } from "./position";
@@ -15,10 +15,24 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
       return;
     }
 
-    const markets = await autocompleteMarkets({
+    const user = await getDiscordUser({
+      ...context.services,
+      discordUserId: interaction.user.id,
+    });
+    const actor = user
+      ? {
+          discordUserId: interaction.user.id,
+          userId: user.id,
+        }
+      : undefined;
+    const subcommand = interaction.options.getSubcommand(false);
+    const autocompleteInput = {
       ...context.services,
       query: String(focused.value),
-    });
+      ...(actor ? { actor } : {}),
+      ...(subcommand ? { subcommand } : {}),
+    };
+    const markets = await autocompleteMarkets(autocompleteInput);
     await interaction.respond(
       markets.map((market) => ({
         name: `${market.title.slice(0, 80)} (${market.slug})`,

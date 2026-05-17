@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createExchange,
   ExchangeIdempotencyConflictError,
+  ExchangeSelfTradeError,
+  ExchangeTradeAmountTooSmallError,
   MarketNotTradeableError,
 } from "../index";
 import { checkExchangeReferenceInvariant } from "../invariants";
@@ -30,7 +32,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("quotes without writing, then buy debits wallet and updates trade state", async () => {
     const userId = await createTestUser("quote-buy");
-    const market = await createOpenMarket(userId, "quote-buy");
+    const creatorId = await createTestUser("quote-buy-creator");
+    const market = await createOpenMarket(creatorId, "quote-buy");
     const yesContract = market.contracts[0];
 
     await fundUser(userId, repToMicro(50n), "quote-buy");
@@ -72,7 +75,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("buys exact target shares and lists open positions", async () => {
     const userId = await createTestUser("buy-shares");
-    const market = await createOpenMarket(userId, "buy-shares");
+    const creatorId = await createTestUser("buy-shares-creator");
+    const market = await createOpenMarket(creatorId, "buy-shares");
     const yesContract = market.contracts[0];
 
     await fundUser(userId, repToMicro(50n), "buy-shares");
@@ -103,9 +107,40 @@ maybeDescribe("exchange buy flow", () => {
     expect(positions.positions[0]?.contract.outcome).toBe("YES");
   });
 
+  it("rejects sub-cent spend and share amounts", async () => {
+    const userId = await createTestUser("tiny");
+    const creatorId = await createTestUser("tiny-creator");
+    const market = await createOpenMarket(creatorId, "tiny");
+    const yesContract = market.contracts[0];
+
+    await fundUser(userId, repToMicro(50n), "tiny");
+
+    await expect(
+      exchange.quoteBuy({
+        amountMicro: 9_999n,
+        contractId: yesContract.id,
+        db: client.db,
+        now: new Date("2030-01-01T00:00:01.000Z"),
+        outcome: "YES",
+      }),
+    ).rejects.toThrow(ExchangeTradeAmountTooSmallError);
+    await expect(
+      exchange.buyShares({
+        contractId: yesContract.id,
+        db: client.db,
+        idempotencyKey: `exchange-test:${userId}:tiny`,
+        now: new Date("2030-01-01T00:00:01.000Z"),
+        outcome: "YES",
+        sharesMicro: 9_999n,
+        userId,
+      }),
+    ).rejects.toThrow(ExchangeTradeAmountTooSmallError);
+  });
+
   it("rejects markets that do not accept bets", async () => {
     const userId = await createTestUser("closed");
-    const market = await createOpenMarket(userId, "closed");
+    const creatorId = await createTestUser("closed-creator");
+    const market = await createOpenMarket(creatorId, "closed");
 
     await closeMarket({
       closedAt: new Date("2030-01-02T00:00:00.000Z"),
@@ -127,8 +162,8 @@ maybeDescribe("exchange buy flow", () => {
   });
 
   it("rejects expired open markets", async () => {
-    const userId = await createTestUser("expired");
-    const market = await createOpenMarket(userId, "expired");
+    const creatorId = await createTestUser("expired-creator");
+    const market = await createOpenMarket(creatorId, "expired");
 
     await expect(
       exchange.quoteBuy({
@@ -143,7 +178,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("rejects void markets", async () => {
     const userId = await createTestUser("void");
-    const market = await createOpenMarket(userId, "void");
+    const creatorId = await createTestUser("void-creator");
+    const market = await createOpenMarket(creatorId, "void");
 
     await voidMarket({ db: client.db, marketId: market.id });
 
@@ -162,7 +198,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("rolls back exchange writes when wallet debit fails", async () => {
     const userId = await createTestUser("insufficient");
-    const market = await createOpenMarket(userId, "insufficient");
+    const creatorId = await createTestUser("insufficient-creator");
+    const market = await createOpenMarket(creatorId, "insufficient");
 
     await expect(
       exchange.buy({
@@ -191,7 +228,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("returns existing result for duplicate identical idempotency key", async () => {
     const userId = await createTestUser("idempotent");
-    const market = await createOpenMarket(userId, "idempotent");
+    const creatorId = await createTestUser("idempotent-creator");
+    const market = await createOpenMarket(creatorId, "idempotent");
     const input = {
       amountMicro: repToMicro(5n),
       contractId: market.contracts[0].id,
@@ -216,7 +254,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("rejects duplicate idempotency key with changed payload", async () => {
     const userId = await createTestUser("conflict");
-    const market = await createOpenMarket(userId, "conflict");
+    const creatorId = await createTestUser("conflict-creator");
+    const market = await createOpenMarket(creatorId, "conflict");
     const idempotencyKey = `exchange-test:${userId}:conflict`;
 
     await fundUser(userId, repToMicro(50n), "conflict");
@@ -246,7 +285,8 @@ maybeDescribe("exchange buy flow", () => {
 
   it("preserves exchange invariants across bounded concurrent buys", async () => {
     const userId = await createTestUser("concurrent");
-    const market = await createOpenMarket(userId, "concurrent");
+    const creatorId = await createTestUser("concurrent-creator");
+    const market = await createOpenMarket(creatorId, "concurrent");
 
     await fundUser(userId, repToMicro(1_000n), "concurrent");
 
@@ -272,6 +312,25 @@ maybeDescribe("exchange buy flow", () => {
     });
 
     expect(report.ok).toBe(true);
+  });
+
+  it("rejects creator self-trades", async () => {
+    const creatorId = await createTestUser("self-trade");
+    const market = await createOpenMarket(creatorId, "self-trade");
+
+    await fundUser(creatorId, repToMicro(50n), "self-trade");
+
+    await expect(
+      exchange.buy({
+        amountMicro: repToMicro(1n),
+        contractId: market.contracts[0].id,
+        db: client.db,
+        idempotencyKey: `exchange-test:${creatorId}:self-trade`,
+        now: new Date("2030-01-01T00:00:01.000Z"),
+        outcome: "YES",
+        userId: creatorId,
+      }),
+    ).rejects.toThrow(ExchangeSelfTradeError);
   });
 
   async function createTestUser(label: string): Promise<string> {

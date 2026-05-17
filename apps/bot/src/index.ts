@@ -1,14 +1,15 @@
-import { createDbClient } from "@habit-gamba/db";
-import { loadBotEnv } from "@habit-gamba/env";
+import { loadBotRuntimeEnv } from "@habit-gamba/env";
 import { Client, Events, GatewayIntentBits } from "discord.js";
 
 import { handleInteraction } from "./handlers";
 import { replyError } from "./handlers/utils";
 import type { BotServices } from "./service";
 
-const env = loadBotEnv();
-const dbClient = createDbClient({ databaseUrl: env.DATABASE_URL });
-const services: BotServices = { db: dbClient.db };
+const env = loadBotRuntimeEnv();
+const services: BotServices = {
+  apiBaseUrl: env.API_BASE_URL,
+  botApiToken: env.BOT_API_TOKEN,
+};
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 let shuttingDown = false;
 
@@ -37,6 +38,5 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   console.log(`discord bot shutting down signal=${signal}`);
   client.destroy();
-  await dbClient.sql.end();
   process.exit(0);
 }

@@ -11,14 +11,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@habit-gamba/contracts": "workspace:*",
     "@habit-gamba/db": "workspace:*",
     "@habit-gamba/env": "workspace:*",
-    "@habit-gamba/exchange": "workspace:*",
-    "@habit-gamba/resolution": "workspace:*",
-    "@habit-gamba/users": "workspace:*",
-    "@habit-gamba/wallet": "workspace:*",
-    "discord.js": "^14.26.4",
-    "drizzle-orm": "^0.45.1"
+    "discord.js": "^14.26.4"
   }
 }

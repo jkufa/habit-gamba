@@ -3,6 +3,9 @@ import type { DbClient, schema } from "@habit-gamba/db";
 export type DbTransaction = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 export type UserExecutor = DbClient | DbTransaction;
 export type User = typeof schema.users.$inferSelect;
+export type UserRole = typeof schema.userRoles.$inferSelect;
+export type UserRoleName = "market_admin";
+export type UserPermission = "market.manage";
 export type Balance = typeof schema.balances.$inferSelect;
 export type LedgerEntry = typeof schema.ledgerEntries.$inferSelect;
 export type UserStatus = User["status"];
@@ -44,6 +47,20 @@ export type ListUsersInput = UserDbInput & {
 export type ListUsersResult = {
   users: User[];
   nextCursor: UserListCursor | null;
+};
+
+export type GrantUserRoleInput = UserDbInput & {
+  role: UserRoleName;
+  userId: string;
+};
+
+export type ListUserRolesInput = UserDbInput & {
+  userId: string;
+};
+
+export type HasUserPermissionInput = UserDbInput & {
+  permission: UserPermission;
+  userId: string;
 };
 
 export type EnsureSeedRepGrantInput = UserDbInput & {

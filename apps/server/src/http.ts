@@ -9,6 +9,7 @@ import {
 import {
   ExchangeIdempotencyConflictError,
   ExchangeMarketNotFoundError,
+  ExchangeSelfTradeError,
   MarketNotTradeableError,
 } from "@habit-gamba/exchange";
 import {
@@ -120,6 +121,7 @@ function mapError(error: unknown): ApiError {
   if (
     error instanceof MarketInvalidTransitionError ||
     error instanceof MarketNotTradeableError ||
+    error instanceof ExchangeSelfTradeError ||
     error instanceof ResolutionInvalidTransitionError ||
     error instanceof InsufficientFundsError ||
     error instanceof RangeError

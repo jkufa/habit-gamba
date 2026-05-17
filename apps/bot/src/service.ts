@@ -1,29 +1,9 @@
-import {
-  closeMarket,
-  createBinaryMarket,
-  getMarketById,
-  listMarkets,
-  openMarket,
-} from "@habit-gamba/contracts";
-import { createId, repToMicro, schema } from "@habit-gamba/db";
-import { createExchange } from "@habit-gamba/exchange";
-import { cancelMarket, resolveMarket } from "@habit-gamba/resolution";
-import { ensureSeedRepGrant, getUserByProviderIdentity, upsertUser } from "@habit-gamba/users";
-import { getBalance } from "@habit-gamba/wallet";
-import { eq, ilike, or, sql } from "drizzle-orm";
-
 import { formatMicro, formatPercent, parseDecimalMicro } from "./money";
-import { canManageMarket } from "./permissions";
-import type { DbClient } from "@habit-gamba/db";
-import type { ExchangeListPositionsResult } from "@habit-gamba/exchange";
 import type { Actor } from "./permissions";
-import type { ResolutionOutcome } from "@habit-gamba/resolution";
 
 const DISCORD_PROVIDER = "discord";
-const STARTER_REP_MICRO = repToMicro(1_000n);
-const DEFAULT_LIQUIDITY_MICRO = repToMicro(100n);
-const CANCEL_PENALTY_BPS = 1_000n;
-const BPS_DENOMINATOR = 10_000n;
+const INITIAL_REFRESH_TRADE_LIMIT = 10;
+const INCREMENTAL_REFRESH_TRADE_LIMIT = 25;
 
 export type DiscordIdentity = {
   displayName: string;
@@ -32,88 +12,152 @@ export type DiscordIdentity = {
 };
 
 export type BotServices = {
-  db: DbClient;
+  apiBaseUrl: string;
+  botApiToken: string;
 };
 
-export async function ensureDiscordUser(input: BotServices & { identity: DiscordIdentity }) {
-  return upsertUser({
-    db: input.db,
-    displayName: input.identity.displayName,
-    handle: input.identity.handle ?? null,
-    metadata: { discord: true },
-    provider: DISCORD_PROVIDER,
-    providerUserId: input.identity.userId,
-  });
+export type LastTradeRefresh = {
+  createdAt: string;
+  id: string;
+};
+
+export type MarketRefreshTrade = {
+  buyerDisplayName: string;
+  buyerHandle: string | null;
+  cashDeltaMicro: bigint;
+  createdAt: Date;
+  id: string;
+  outcome: "NO" | "YES";
+  sharesDeltaMicro: bigint;
+};
+
+export type BotUser = {
+  displayName: string;
+  handle: string | null;
+  id: string;
+  metadata: Record<string, unknown>;
+  provider: string;
+  providerUserId: string;
+  status: string;
+};
+
+export type BotBalance = {
+  availableAmountMicro: bigint;
+  creditLimitMicro: bigint;
+  currency: string;
+  lockedAmountMicro: bigint;
+  userId: string;
+};
+
+export type BotMarket = {
+  closesAt: Date | null;
+  contracts: Array<{
+    id: string;
+    marketId: string;
+    outcome: "NO" | "YES";
+    shareSupplyMicro: bigint;
+    title: string;
+  }>;
+  creatorUserId: string;
+  description: string | null;
+  id: string;
+  metadata: Record<string, unknown>;
+  prices?: { no: number; yes: number };
+  slug: string;
+  status: string;
+  title: string;
+};
+
+export type BotPositionView = {
+  contract: BotMarket["contracts"][number];
+  market: BotMarket;
+  position: {
+    contractId: string;
+    id: string;
+    quantityMicro: bigint;
+    userId: string;
+  };
+};
+
+export type BotApiErrorBody = {
+  error?: {
+    code: string;
+    details?: unknown;
+    message: string;
+  };
+};
+
+export class BotApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "BotApiError";
+  }
 }
 
 export async function getDiscordUser(input: BotServices & { discordUserId: string }) {
-  return getUserByProviderIdentity({
-    db: input.db,
-    provider: DISCORD_PROVIDER,
-    providerUserId: input.discordUserId,
+  const result = await request(input, "/accounts/me", {
+    actor: { discordUserId: input.discordUserId },
+    allowNotFound: true,
+    method: "GET",
   });
+
+  return result ? parseUser(result.user) : null;
 }
 
 export async function registerAccount(input: BotServices & { identity: DiscordIdentity }) {
-  const user = await ensureDiscordUser(input);
-  const grant = await ensureSeedRepGrant({
-    amountMicro: STARTER_REP_MICRO,
-    db: input.db,
-    idempotencyKey: `discord:${input.identity.userId}:starter-rep`,
-    metadata: { discordStarterGrant: true },
-    sourceId: `discord:${input.identity.userId}:starter-rep`,
-    userId: user.id,
+  const result = await request(input, "/accounts/register", {
+    body: {
+      displayName: input.identity.displayName,
+      handle: input.identity.handle ?? null,
+      provider: DISCORD_PROVIDER,
+      providerUserId: input.identity.userId,
+    },
+    method: "POST",
   });
-  const balance = await getBalance({ db: input.db, userId: user.id });
 
   return {
-    balance,
-    grant,
-    user,
+    balance: parseBalance(result.balance),
+    grant: result.grant,
+    user: parseUser(result.user),
   };
 }
 
 export async function getAccount(input: BotServices & { actor: Actor }) {
+  const result = await request(input, "/accounts/me", {
+    actor: input.actor,
+    method: "GET",
+  });
+
   return {
-    balance: await getBalance({ db: input.db, userId: input.actor.userId }),
+    balance: parseBalance(result.balance),
+    user: parseUser(result.user),
   };
 }
 
 export async function createMarketCommand(
   input: BotServices & {
     actor: Actor;
-    closesAt?: Date;
     description?: string | null;
-    openNow: boolean;
     slug?: string | null;
     title: string;
   },
 ) {
-  const { market } = await createBinaryMarket({
-    creatorUserId: input.actor.userId,
-    db: input.db,
-    description: input.description ?? null,
-    metadata: {},
-    slug: input.slug?.trim() || createSlug(input.title),
-    title: input.title.trim(),
+  const result = await request(input, "/markets", {
+    actor: input.actor,
+    body: {
+      description: input.description ?? null,
+      ...(input.slug ? { slug: input.slug } : {}),
+      title: input.title.trim(),
+    },
+    method: "POST",
   });
 
-  if (input.openNow) {
-    if (!input.closesAt) {
-      throw new RangeError("closes_at is required when open is true");
-    }
-
-    return {
-      market: await openMarket({
-        closesAt: input.closesAt,
-        db: input.db,
-        marketId: market.id,
-      }),
-      opened: true,
-    };
-  }
-
-  return { market, opened: false };
+  return { market: parseMarket(result.market), opened: false };
 }
 
 export async function openMarketCommand(
@@ -123,29 +167,36 @@ export async function openMarketCommand(
     marketId: string;
   },
 ) {
-  const market = await requireMarket(input.db, input.marketId);
-  assertMarketManager(input.actor, market);
-
-  return openMarket({
-    closesAt: input.closesAt,
-    db: input.db,
-    marketId: market.id,
+  const result = await request(input, `/markets/${input.marketId}/open`, {
+    actor: input.actor,
+    body: {
+      closesAt: input.closesAt.toISOString(),
+    },
+    method: "POST",
   });
+
+  return parseMarket(result);
 }
 
 export async function closeMarketCommand(input: BotServices & { actor: Actor; marketId: string }) {
-  const market = await requireMarket(input.db, input.marketId);
-  assertMarketManager(input.actor, market);
-
-  return closeMarket({
-    db: input.db,
-    marketId: market.id,
+  const result = await request(input, `/markets/${input.marketId}/close`, {
+    actor: input.actor,
+    method: "POST",
   });
+
+  return parseMarket(result);
+}
+
+export async function refreshMarketCommand(
+  input: BotServices & { actor: Actor; marketId: string },
+) {
+  return viewMarketCommand(input);
 }
 
 export async function viewMarketCommand(input: BotServices & { marketId: string }) {
-  const exchange = createExchange({ defaultLiquidityMicro: DEFAULT_LIQUIDITY_MICRO });
-  return exchange.getMarket({ db: input.db, marketId: input.marketId });
+  const result = await request(input, `/markets/${input.marketId}`, { method: "GET" });
+
+  return parseMarket(result);
 }
 
 export async function buyMarketCommand(
@@ -157,41 +208,32 @@ export async function buyMarketCommand(
     value: string;
   },
 ) {
-  const market = await viewMarketCommand(input);
-  const contract = market.contracts.find((candidate) => candidate.outcome === input.outcome);
-
-  if (!contract) {
-    throw new Error(`Missing ${input.outcome} contract`);
-  }
-
-  const exchange = createExchange({ defaultLiquidityMicro: DEFAULT_LIQUIDITY_MICRO });
   const amountMicro = parseDecimalMicro(input.value, input.mode);
-  const idempotencyKey = `discord:${input.actor.discordUserId}:buy:${createId()}`;
+  const result = await request(input, `/markets/${input.marketId}/buy`, {
+    actor: input.actor,
+    body: {
+      amountMicro: amountMicro.toString(),
+      mode: input.mode,
+      outcome: input.outcome,
+    },
+    idempotencyKey: `discord:${input.actor.discordUserId}:buy:${crypto.randomUUID()}`,
+    method: "POST",
+  });
 
-  return input.mode === "spend_rep"
-    ? exchange.buy({
-        amountMicro,
-        contractId: contract.id,
-        db: input.db,
-        idempotencyKey,
-        outcome: input.outcome,
-        userId: input.actor.userId,
-      })
-    : exchange.buyShares({
-        contractId: contract.id,
-        db: input.db,
-        idempotencyKey,
-        outcome: input.outcome,
-        sharesMicro: amountMicro,
-        userId: input.actor.userId,
-      });
+  return parseBuyResult(result);
 }
 
 export async function listPositionsCommand(
   input: BotServices & { actor: Actor },
-): Promise<ExchangeListPositionsResult> {
-  const exchange = createExchange({ defaultLiquidityMicro: DEFAULT_LIQUIDITY_MICRO });
-  return exchange.listPositions({ db: input.db, userId: input.actor.userId });
+): Promise<{ positions: BotPositionView[] }> {
+  const result = await request(input, "/accounts/me/positions", {
+    actor: input.actor,
+    method: "GET",
+  });
+
+  return {
+    positions: result.positions.map(parsePositionView),
+  };
 }
 
 export async function resolveMarketCommand(
@@ -199,19 +241,19 @@ export async function resolveMarketCommand(
     actor: Actor;
     evidence: Record<string, unknown>;
     marketId: string;
-    outcome: ResolutionOutcome;
+    outcome: "NO" | "YES";
   },
 ) {
-  const market = await requireMarket(input.db, input.marketId);
-  assertMarketManager(input.actor, market);
-
-  return resolveMarket({
-    db: input.db,
-    evidence: input.evidence,
-    marketId: market.id,
-    outcome: input.outcome,
-    resolvedByUserId: input.actor.userId,
+  const result = await request(input, `/markets/${input.marketId}/resolve`, {
+    actor: input.actor,
+    body: {
+      evidence: input.evidence,
+      outcome: input.outcome,
+    },
+    method: "POST",
   });
+
+  return { ...result, market: parseMarket(result.market) };
 }
 
 export async function cancelMarketCommand(
@@ -221,37 +263,40 @@ export async function cancelMarketCommand(
     reason: string;
   },
 ) {
-  const market = await requireMarket(input.db, input.marketId);
-  assertMarketManager(input.actor, market);
-
-  return cancelMarket({
-    db: input.db,
-    marketId: market.id,
-    reason: input.reason,
+  const result = await request(input, `/markets/${input.marketId}/cancel`, {
+    actor: input.actor,
+    body: {
+      reason: input.reason,
+    },
+    method: "POST",
   });
+
+  return { ...result, market: parseMarket(result.market) };
 }
 
-export async function autocompleteMarkets(input: BotServices & { query: string }) {
-  const trimmed = input.query.trim();
+export async function previewCancelMarketCommand(
+  input: BotServices & { actor?: Actor; marketId: string },
+) {
+  return parseCancelPreview(
+    await request(input, `/markets/${input.marketId}/cancel/preview`, {
+      actor: input.actor,
+      method: "POST",
+    }),
+  );
+}
 
-  if (trimmed.length === 0) {
-    const result = await listMarkets({ db: input.db, limit: 25 });
-    return result.markets;
+export async function autocompleteMarkets(
+  input: BotServices & { actor?: Actor; query: string; subcommand?: string },
+): Promise<BotMarket[]> {
+  const params = new URLSearchParams({ query: input.query });
+
+  if (input.subcommand) {
+    params.set("subcommand", input.subcommand);
   }
 
-  const rows = await input.db
-    .select()
-    .from(schema.markets)
-    .where(
-      or(ilike(schema.markets.title, `%${trimmed}%`), ilike(schema.markets.slug, `%${trimmed}%`)),
-    )
-    .orderBy(sql`${schema.markets.createdAt} desc`, sql`${schema.markets.id} desc`)
-    .limit(25);
-  const result = await Promise.all(
-    rows.map((market) => getMarketById({ db: input.db, marketId: market.id })),
-  );
+  const result = await request(input, `/markets?${params}`, withOptionalActor(input.actor, "GET"));
 
-  return result.flatMap((market) => (market ? [market] : []));
+  return result.markets.map(parseMarket);
 }
 
 export async function writeMarketDiscordMetadata(
@@ -260,21 +305,70 @@ export async function writeMarketDiscordMetadata(
     metadata: Record<string, unknown>;
   },
 ) {
-  const market = await requireMarket(input.db, input.marketId);
-
-  await input.db
-    .update(schema.markets)
-    .set({
+  await request(input, `/markets/${input.marketId}/metadata`, {
+    body: {
       metadata: {
-        ...market.metadata,
-        discord: {
-          ...asRecord(market.metadata.discord),
-          ...input.metadata,
-        },
+        discord: input.metadata,
       },
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.markets.id, input.marketId));
+    },
+    method: "PATCH",
+  });
+}
+
+export async function listMarketRefreshTrades(
+  input: BotServices & {
+    lastTradeRefresh?: LastTradeRefresh | null;
+    marketId: string;
+  },
+): Promise<MarketRefreshTrade[]> {
+  const params = new URLSearchParams();
+
+  if (input.lastTradeRefresh) {
+    params.set("createdAt", input.lastTradeRefresh.createdAt);
+    params.set("id", input.lastTradeRefresh.id);
+  }
+
+  const query = params.size > 0 ? `?${params}` : "";
+  const result = await request(input, `/markets/${input.marketId}/refresh-trades${query}`, {
+    method: "GET",
+  });
+
+  return result.trades.map(parseRefreshTrade);
+}
+
+export function selectMarketRefreshTradesForPosting(
+  trades: MarketRefreshTrade[],
+  lastTradeRefresh?: LastTradeRefresh | null,
+) {
+  const cursor = parseTradeCursor(lastTradeRefresh);
+  const limit = cursor ? INCREMENTAL_REFRESH_TRADE_LIMIT : INITIAL_REFRESH_TRADE_LIMIT;
+  const sorted = [...trades].sort(compareTradesAscending);
+  const candidates = cursor ? sorted.filter((trade) => isTradeAfterCursor(trade, cursor)) : sorted;
+
+  return cursor ? candidates.slice(0, limit) : candidates.slice(-limit);
+}
+
+export function serializeLastTradeRefresh(
+  trade: Pick<MarketRefreshTrade, "createdAt" | "id">,
+): LastTradeRefresh {
+  return {
+    createdAt: trade.createdAt.toISOString(),
+    id: trade.id,
+  };
+}
+
+export function parseLastTradeRefresh(value: unknown): LastTradeRefresh | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (typeof record.createdAt !== "string" || typeof record.id !== "string") {
+    return null;
+  }
+
+  return { createdAt: record.createdAt, id: record.id };
 }
 
 export function marketSummaryFields(market: {
@@ -288,7 +382,7 @@ export function marketSummaryFields(market: {
     { name: "Status", value: market.status, inline: true },
     {
       name: "Closes",
-      value: market.closesAt ? market.closesAt.toISOString() : "not open",
+      value: market.closesAt ? formatCloseDate(market.closesAt) : "not open",
       inline: true,
     },
     {
@@ -313,38 +407,202 @@ export function formatTradeSummary(input: {
   return `${input.outcome} ${formatMicro(input.sharesMicro, "contracts")} bought for ${formatMicro(input.costMicro)} on ${input.title}`;
 }
 
-export function calculateCancelPenalty(refundTotalMicro: bigint): bigint {
-  return (refundTotalMicro * CANCEL_PENALTY_BPS) / BPS_DENOMINATOR;
+export function formatMarketRefreshTradeSummary(input: {
+  title: string;
+  trade: MarketRefreshTrade;
+}) {
+  const buyer = input.trade.buyerHandle
+    ? `${input.trade.buyerDisplayName} (@${input.trade.buyerHandle})`
+    : input.trade.buyerDisplayName;
+  const costMicro = -input.trade.cashDeltaMicro;
+
+  return `${buyer} bought ${input.trade.outcome} ${formatMicro(input.trade.sharesDeltaMicro, "contracts")} for ${formatMicro(costMicro)} on ${input.title}`;
 }
 
-function assertMarketManager(actor: Actor, market: { creatorUserId: string }) {
-  if (!canManageMarket(actor, market)) {
-    throw new Error("Only the market creator or a server admin can do this");
+export function formatCloseDate(date: Date): string {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "long",
+    timeZone: "America/New_York",
+    year: "numeric",
+  }).format(date);
+
+  return `${formatted} ET`;
+}
+
+type TradeCursor = {
+  createdAt: Date;
+  id: string;
+};
+
+type RequestOptions = {
+  actor?: Pick<Actor, "discordUserId"> | undefined;
+  allowNotFound?: boolean;
+  body?: unknown;
+  idempotencyKey?: string;
+  method: "GET" | "PATCH" | "POST";
+};
+
+async function request(input: BotServices, path: string, options: RequestOptions) {
+  const response = await fetch(new URL(path, input.apiBaseUrl), {
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    headers: requestHeaders(input, options),
+    method: options.method,
+  });
+  const payload = (await response.json()) as BotApiErrorBody & { data?: unknown };
+
+  if (!response.ok) {
+    if (options.allowNotFound && payload.error?.code === "UNAUTHORIZED") {
+      return null;
+    }
+
+    throw new BotApiError(
+      response.status,
+      payload.error?.code ?? "API_ERROR",
+      payload.error?.message ?? "API request failed",
+      payload.error?.details,
+    );
   }
+
+  return payload.data as any;
 }
 
-async function requireMarket(db: DbClient, marketId: string) {
-  const market = await getMarketById({ db, marketId });
+function requestHeaders(input: BotServices, options: RequestOptions): Record<string, string> {
+  return {
+    Authorization: `Bearer ${input.botApiToken}`,
+    "Content-Type": "application/json",
+    ...(options.actor ? actorHeaders(options.actor) : {}),
+    ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
+  };
+}
 
-  if (!market) {
-    throw new Error("Market not found");
+function actorHeaders(actor: Pick<Actor, "discordUserId">): Record<string, string> {
+  return {
+    "X-Provider": DISCORD_PROVIDER,
+    "X-Provider-User-Id": actor.discordUserId,
+  };
+}
+
+function withOptionalActor(
+  actor: Actor | undefined,
+  method: RequestOptions["method"],
+): RequestOptions {
+  return actor ? { actor, method } : { method };
+}
+
+function parseUser(value: any): BotUser {
+  return value as BotUser;
+}
+
+function parseBalance(value: any): BotBalance {
+  return {
+    ...value,
+    availableAmountMicro: BigInt(value.availableAmountMicro),
+    creditLimitMicro: BigInt(value.creditLimitMicro),
+    lockedAmountMicro: BigInt(value.lockedAmountMicro),
+  };
+}
+
+function parseMarket(value: any): BotMarket {
+  return {
+    ...value,
+    closesAt: value.closesAt ? new Date(value.closesAt) : null,
+    contracts: value.contracts.map((contract: any) => ({
+      ...contract,
+      shareSupplyMicro: BigInt(contract.shareSupplyMicro),
+    })),
+  };
+}
+
+function parseBuyResult(value: any) {
+  return {
+    ...value,
+    market: parseMarket(value.market),
+    position: parsePosition(value.position),
+    quote: parseQuote(value.quote),
+  };
+}
+
+function parsePositionView(value: any) {
+  return {
+    contract: {
+      ...value.contract,
+      shareSupplyMicro: BigInt(value.contract.shareSupplyMicro),
+    },
+    market: parseMarket(value.market),
+    position: parsePosition(value.position),
+  };
+}
+
+function parsePosition(value: any) {
+  return {
+    ...value,
+    quantityMicro: BigInt(value.quantityMicro),
+  };
+}
+
+function parseQuote(value: any) {
+  return {
+    ...value,
+    costMicro: BigInt(value.costMicro),
+    sharesMicro: BigInt(value.sharesMicro),
+  };
+}
+
+function parseCancelPreview(value: any) {
+  return {
+    creatorNetMicro: BigInt(value.creatorNetMicro),
+    creatorPenaltyMicro: BigInt(value.creatorPenaltyMicro),
+    refundTotalMicro: BigInt(value.refundTotalMicro),
+  };
+}
+
+function parseRefreshTrade(value: any): MarketRefreshTrade {
+  return {
+    ...value,
+    cashDeltaMicro: BigInt(value.cashDeltaMicro),
+    createdAt: new Date(value.createdAt),
+    sharesDeltaMicro: BigInt(value.sharesDeltaMicro),
+  };
+}
+
+function parseTradeCursor(marker: LastTradeRefresh | null | undefined): TradeCursor | null {
+  if (!marker) {
+    return null;
   }
 
-  return market;
+  const createdAt = new Date(marker.createdAt);
+
+  if (Number.isNaN(createdAt.getTime())) {
+    return null;
+  }
+
+  return {
+    createdAt,
+    id: marker.id,
+  };
 }
 
-function createSlug(title: string): string {
-  const base = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 48);
+function isTradeAfterCursor(
+  trade: Pick<MarketRefreshTrade, "createdAt" | "id">,
+  cursor: TradeCursor,
+) {
+  const createdAtDiff = trade.createdAt.getTime() - cursor.createdAt.getTime();
 
-  return `${base || "market"}-${createId().slice(-6).toLowerCase()}`;
+  return createdAtDiff > 0 || (createdAtDiff === 0 && trade.id > cursor.id);
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+function compareTradesAscending(
+  left: Pick<MarketRefreshTrade, "createdAt" | "id">,
+  right: Pick<MarketRefreshTrade, "createdAt" | "id">,
+) {
+  const createdAtDiff = left.createdAt.getTime() - right.createdAt.getTime();
+
+  if (createdAtDiff !== 0) {
+    return createdAtDiff;
+  }
+
+  return left.id.localeCompare(right.id);
 }

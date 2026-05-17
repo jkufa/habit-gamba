@@ -2,9 +2,13 @@ export { UserConflictError, UserGrantConflictError, UserNotFoundError } from "./
 export { createUser, deactivateUser, updateUserProfile, upsertUser } from "./lib/lifecycle";
 export { ensureSeedRepGrant } from "./lib/grants";
 export { getUserById, getUserByProviderIdentity, listUsers } from "./lib/reads";
+export { grantUserRole, hasUserPermission, listUserRoles, roleHasPermission } from "./lib/roles";
 export type {
   CreateUserInput,
   EnsureSeedRepGrantInput,
+  GrantUserRoleInput,
+  HasUserPermissionInput,
+  ListUserRolesInput,
   EnsureSeedRepGrantResult,
   ListUsersInput,
   ListUsersResult,
@@ -13,5 +17,8 @@ export type {
   User,
   UserDbInput,
   UserListCursor,
+  UserPermission,
+  UserRole,
+  UserRoleName,
   UserStatus,
 } from "./lib/types";

@@ -2,7 +2,7 @@ import { createBinaryMarket, openMarket } from "@habit-gamba/contracts";
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { creditRep, getBalance } from "@habit-gamba/wallet";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, lte, or } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -10,6 +10,7 @@ import {
   autoCancelExpiredMarkets,
   cancelMarket,
   checkResolutionInvariant,
+  previewCancelMarket,
   ResolutionIdempotencyConflictError,
   resolveMarket,
 } from "../../index";
@@ -149,12 +150,35 @@ maybeDescribe("resolution settlement", () => {
     ).rejects.toThrow(ResolutionIdempotencyConflictError);
   });
 
+  it("previews cancellation refund, creator penalty, and creator net effect", async () => {
+    const { marketId, noBettorId, yesBettorId } = await createFundedOpenMarket("preview");
+    const yesBuy = await buy(marketId, yesBettorId, "YES", repToMicro(4n), "preview-yes");
+    const noBuy = await buy(marketId, noBettorId, "NO", repToMicro(2n), "preview-no");
+    const refundTotal = -yesBuy.trade.cashDeltaMicro - noBuy.trade.cashDeltaMicro;
+
+    const preview = await previewCancelMarket({
+      creatorPenaltyBps: 1000,
+      db: client.db,
+      marketId,
+    });
+
+    expect(preview.refundTotalMicro).toBe(refundTotal);
+    expect(preview.creatorPenaltyMicro).toBe(refundTotal / 10n);
+    expect(preview.creatorNetMicro).toBe(-(refundTotal / 10n));
+  });
+
   it("auto-cancels expired open markets with a bounded limit", async () => {
     await client.db
       .update(schema.markets)
       .set({ closesAt: new Date("2100-01-01T00:00:00.000Z") })
       .where(
-        and(eq(schema.markets.status, "open"), like(schema.markets.slug, "resolution-test-auto-%")),
+        and(
+          eq(schema.markets.status, "open"),
+          or(
+            like(schema.markets.slug, "resolution-test-auto-%"),
+            lte(schema.markets.closesAt, new Date("2029-07-02T00:00:00.000Z")),
+          ),
+        ),
       );
 
     const first = await createFundedOpenMarket("auto-first", {
