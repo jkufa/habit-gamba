@@ -1,4 +1,4 @@
-import { createBinaryMarket, openMarket } from "@habit-gamba/contracts";
+import { closeMarket, createBinaryMarket, openMarket } from "@habit-gamba/contracts";
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { creditRep, getBalance } from "@habit-gamba/wallet";
@@ -8,9 +8,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   autoCancelExpiredMarkets,
+  autoVoidUnresolvedMarkets,
   cancelMarket,
   checkResolutionInvariant,
   previewCancelMarket,
+  ResolutionDeadlinePassedError,
   ResolutionIdempotencyConflictError,
   resolveMarket,
 } from "../../index";
@@ -44,7 +46,7 @@ maybeDescribe("resolution settlement", () => {
       db: client.db,
       marketId,
       outcome: "YES",
-      resolvedAt: new Date("2030-05-02T00:00:00.000Z"),
+      resolvedAt: new Date("2030-05-01T23:59:59.000Z"),
       resolvedByUserId: creatorId,
     });
     const second = await resolveMarket({
@@ -77,6 +79,7 @@ maybeDescribe("resolution settlement", () => {
     expect(second.idempotent).toBe(true);
     expect(second.resolution.id).toBe(first.resolution.id);
     expect(first.ledgerEntries).toHaveLength(1);
+    await expectMarketEvent(marketId, "market.resolved");
     expect(yesAfter.availableAmountMicro - yesBefore.availableAmountMicro).toBe(
       yesBuy.position.quantityMicro,
     );
@@ -130,6 +133,7 @@ maybeDescribe("resolution settlement", () => {
     expect(second.cancellation.id).toBe(first.cancellation.id);
     expect(first.cancellation.refundTotalMicro).toBe(refundTotal);
     expect(first.cancellation.creatorPenaltyMicro).toBe(expectedPenalty);
+    await expectMarketEvent(marketId, "market.voided");
     expect(yesAfter.availableAmountMicro - yesBefore.availableAmountMicro).toBe(
       -yesBuy.trade.cashDeltaMicro,
     );
@@ -165,6 +169,23 @@ maybeDescribe("resolution settlement", () => {
     expect(preview.refundTotalMicro).toBe(refundTotal);
     expect(preview.creatorPenaltyMicro).toBe(refundTotal / 10n);
     expect(preview.creatorNetMicro).toBe(-(refundTotal / 10n));
+  });
+
+  it("rejects resolution after an open market deadline", async () => {
+    const { creatorId, marketId } = await createFundedOpenMarket("late-resolution", {
+      closesAt: new Date("2030-07-01T00:00:00.000Z"),
+      openedAt: new Date("2030-06-01T00:00:00.000Z"),
+    });
+
+    await expect(
+      resolveMarket({
+        db: client.db,
+        marketId,
+        now: new Date("2030-07-01T00:00:00.000Z"),
+        outcome: "YES",
+        resolvedByUserId: creatorId,
+      }),
+    ).rejects.toThrow(ResolutionDeadlinePassedError);
   });
 
   it("auto-cancels expired open markets with a bounded limit", async () => {
@@ -211,6 +232,50 @@ maybeDescribe("resolution settlement", () => {
     expect(cancelled).toHaveLength(1);
     expect(cancelled[0]?.id === first.marketId || cancelled[0]?.id === second.marketId).toBe(true);
     expect(stillOpen.some((market) => market.id === future.marketId)).toBe(true);
+  });
+
+  it("auto-voids expired open and closed unresolved markets with a bounded limit", async () => {
+    const expired = await createFundedOpenMarket("auto-void-expired", {
+      closesAt: new Date("2030-09-01T00:00:00.000Z"),
+      openedAt: new Date("2030-08-01T00:00:00.000Z"),
+    });
+    const closed = await createFundedOpenMarket("auto-void-closed", {
+      closesAt: new Date("2030-10-01T00:00:00.000Z"),
+      openedAt: new Date("2030-09-01T00:00:00.000Z"),
+    });
+    const future = await createFundedOpenMarket("auto-void-future", {
+      closesAt: new Date("2030-11-01T00:00:00.000Z"),
+      openedAt: new Date("2030-10-01T00:00:00.000Z"),
+    });
+
+    await closeMarket({ db: client.db, marketId: closed.marketId });
+
+    const first = await autoVoidUnresolvedMarkets({
+      db: client.db,
+      limit: 1,
+      marketIds: [expired.marketId, closed.marketId, future.marketId],
+      now: new Date("2030-09-02T00:00:00.000Z"),
+    });
+    const second = await autoVoidUnresolvedMarkets({
+      db: client.db,
+      limit: 10,
+      marketIds: [expired.marketId, closed.marketId, future.marketId],
+      now: new Date("2030-09-02T00:00:00.000Z"),
+    });
+    const markets = await client.db
+      .select()
+      .from(schema.markets)
+      .where(inArray(schema.markets.id, [expired.marketId, closed.marketId, future.marketId]));
+    const voided = markets.filter((market) => market.status === "void");
+    const futureMarket = markets.find((market) => market.id === future.marketId);
+
+    expect(first.voidedCount).toBe(1);
+    expect(second.errors).toHaveLength(0);
+    expect(first.voidedCount + second.voidedCount).toBe(2);
+    expect(voided.map((market) => market.id).sort()).toEqual(
+      [expired.marketId, closed.marketId].sort(),
+    );
+    expect(futureMarket?.status).toBe("open");
   });
 
   async function createFundedOpenMarket(
@@ -304,5 +369,16 @@ maybeDescribe("resolution settlement", () => {
       sourceType: "resolution_test_fund",
       userId,
     });
+  }
+
+  async function expectMarketEvent(marketId: string, type: string) {
+    const [event] = await client.db
+      .select()
+      .from(schema.events)
+      .where(and(eq(schema.events.aggregateId, marketId), eq(schema.events.type, type)))
+      .limit(1);
+
+    expect(event).toBeTruthy();
+    expect(event?.aggregateType).toBe("market");
   }
 });

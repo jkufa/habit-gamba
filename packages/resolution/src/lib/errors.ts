@@ -33,3 +33,12 @@ export class ResolutionIdempotencyConflictError extends Error {
     this.name = "ResolutionIdempotencyConflictError";
   }
 }
+
+export class ResolutionDeadlinePassedError extends Error {
+  readonly code = "RESOLUTION_DEADLINE_PASSED" as const;
+
+  constructor(readonly details: { closesAt: Date; marketId: string; now: Date }) {
+    super("Market resolution deadline has passed");
+    this.name = "ResolutionDeadlinePassedError";
+  }
+}

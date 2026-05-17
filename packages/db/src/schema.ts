@@ -295,3 +295,21 @@ export const cancellations = pgTable(
     check("cancellations_creator_penalty_nonnegative", sql`${table.creatorPenaltyMicro} >= 0`),
   ],
 );
+
+export const events = pgTable(
+  "events",
+  {
+    id: idColumn(),
+    type: text("type").notNull(),
+    aggregateType: text("aggregate_type").notNull(),
+    aggregateId: text("aggregate_id").notNull(),
+    payload: metadataColumn("payload"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAtColumn(),
+  },
+  (table) => [
+    index("events_type_idx").on(table.type),
+    index("events_aggregate_idx").on(table.aggregateType, table.aggregateId),
+    index("events_occurred_at_idx").on(table.occurredAt),
+  ],
+);

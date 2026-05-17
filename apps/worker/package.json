@@ -1,0 +1,18 @@
+{
+  "name": "@habit-gamba/worker",
+  "type": "module",
+  "scripts": {
+    "build": "bun run check-types",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint .",
+    "start": "bun --env-file=../../.env src/index.ts",
+    "test": "bun --env-file=../../.env vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@habit-gamba/contracts": "workspace:*",
+    "@habit-gamba/db": "workspace:*",
+    "@habit-gamba/env": "workspace:*",
+    "@habit-gamba/resolution": "workspace:*",
+    "drizzle-orm": "^0.45.1"
+  }
+}

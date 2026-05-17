@@ -2,7 +2,7 @@
 
 Postgres uses Drizzle SQL migrations. Primary keys are ULID text; persisted money, shares, LMSR quantities, fees, payouts, and balances use bigint micro-units.
 
-Core tables: `users`, `balances`, `markets`, `contracts`, `positions`, `trades`, `ledger_entries`, and `resolutions`. `markets` are habit questions; `contracts` are binary YES/NO tradable outcomes.
+Core tables: `users`, `balances`, `markets`, `contracts`, `positions`, `trades`, `ledger_entries`, `resolutions`, `cancellations`, and `events`. `markets` are habit questions; `contracts` are binary YES/NO tradable outcomes.
 
 REP is the only currency: `1 REP = 1_000_000` micro-units. `ledger_entries` are the append-only source of truth; `balances` are cached projections updated transactionally.
 
@@ -14,7 +14,9 @@ REP is the only currency: `1 REP = 1_000_000` micro-units. `ledger_entries` are 
 
 `positions` stores net user holdings per contract. `trades` stores LMSR-only trade history with idempotency keys.
 
-`ledger_entries` stores every REP movement with source/idempotency fields. `resolutions` stores one winning contract per resolved market, with manual fields now and nullable oracle fields for later.
+`ledger_entries` stores every REP movement with source/idempotency fields. `resolutions` stores one winning contract per resolved market, with manual fields now and nullable oracle fields for later. `cancellations` stores one void/refund record per void market.
+
+`events` is a durable outbox for immutable domain events. V1 writes `market.resolved` and `market.voided` so later bot/notification consumers can catch up after restarts. Delivery state is intentionally not modeled yet; add an `event_deliveries`-style table when multiple consumers need independent pending/processed/error state.
 
 ## Important Invariants
 
@@ -30,6 +32,7 @@ Each binary market has exactly one YES contract and one NO contract.
 DRAFT/OPEN/CLOSED markets do not have resolutions.
 RESOLVED markets have exactly one resolution row.
 VOID markets refund users by ledger entries.
+Terminal market settlements write outbox events.
 LMSR prices stay between 0 and 1.
 YES price + NO price is approximately 1 before rounding.
 Trade and ledger idempotency keys prevent duplicate money writes.

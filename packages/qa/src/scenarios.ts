@@ -92,7 +92,7 @@ function buildHappyPath(input: { db: DbClient; fixture: QaFixture; qaRunId: stri
           db: input.db,
           marketId: marketIdRef.current,
           outcome: "YES",
-          resolvedAt: new Date("2030-01-02T00:00:01.000Z"),
+          resolvedAt: new Date("2030-01-01T23:59:59.000Z"),
           resolvedByUserId: input.fixture.users[0]?.id ?? fail("missing QA resolver"),
         });
       },

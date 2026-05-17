@@ -14,6 +14,7 @@ import {
   MarketNotTradeableError,
 } from "@habit-gamba/exchange";
 import {
+  ResolutionDeadlinePassedError,
   ResolutionIdempotencyConflictError,
   ResolutionInvalidTransitionError,
   ResolutionMarketNotFoundError,
@@ -115,6 +116,7 @@ function mapError(error: unknown): ApiError {
 
   if (
     error instanceof MarketInvalidTransitionError ||
+    error instanceof ResolutionDeadlinePassedError ||
     error instanceof MarketNotTradeableError ||
     error instanceof ExchangeSelfTradeError ||
     error instanceof ResolutionInvalidTransitionError ||

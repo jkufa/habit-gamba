@@ -1,6 +1,6 @@
-import { createId, schema } from "@habit-gamba/db";
+import { createId, insertEvent, schema } from "@habit-gamba/db";
 import { payoutRep, penalizeRep, refundRep } from "@habit-gamba/wallet";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, notInArray, or, sql } from "drizzle-orm";
 
 import {
   BPS_DENOMINATOR,
@@ -8,10 +8,12 @@ import {
   CANCELLATION_REFUND_SOURCE_TYPE,
   DEFAULT_AUTO_CANCEL_LIMIT,
   DEFAULT_CREATOR_PENALTY_BPS,
+  MAX_AUTO_CANCEL_LIMIT,
   RESOLUTION_PAYOUT_SOURCE_TYPE,
 } from "./constants";
 import {
   ResolutionConfigError,
+  ResolutionDeadlinePassedError,
   ResolutionIdempotencyConflictError,
   ResolutionInvalidTransitionError,
   ResolutionMarketNotFoundError,
@@ -19,6 +21,8 @@ import {
 import type {
   AutoCancelExpiredMarketsInput,
   AutoCancelExpiredMarketsResult,
+  AutoVoidUnresolvedMarketsInput,
+  AutoVoidUnresolvedMarketsResult,
   CancelMarketInput,
   CancelMarketResult,
   DbTransaction,
@@ -45,8 +49,10 @@ export async function resolveMarket(input: ResolveMarketInput): Promise<ResolveM
 
     assertCanResolve(loaded.market);
 
+    const resolvedAt = input.resolvedAt ?? input.now ?? new Date();
+    assertResolutionBeforeDeadline(loaded.market, input.now ?? resolvedAt);
+
     const winningContract = getContractByOutcome(loaded.contracts, input.outcome);
-    const resolvedAt = input.resolvedAt ?? new Date();
     const resolutionId = createId();
     const positions = await loadPositionsForUpdate(tx, loaded.contracts);
     const ledgerEntries: LedgerEntry[] = [];
@@ -106,6 +112,23 @@ export async function resolveMarket(input: ResolveMarketInput): Promise<ResolveM
       throw new Error("Failed to mark market resolved");
     }
 
+    await insertEvent({
+      aggregateId: input.marketId,
+      aggregateType: "market",
+      db: input.db,
+      occurredAt: resolvedAt,
+      payload: {
+        marketId: input.marketId,
+        outcome: input.outcome,
+        resolutionId,
+        resolvedByUserId: input.resolvedByUserId,
+        status: "resolved",
+        winningContractId: winningContract.id,
+      },
+      tx,
+      type: "market.resolved",
+    });
+
     return {
       idempotent: false,
       ledgerEntries,
@@ -122,7 +145,7 @@ export async function cancelMarket(input: CancelMarketInput): Promise<CancelMark
     throw new RangeError("reason must be nonempty");
   }
 
-  return input.db.transaction(async (tx) => {
+  const operation = async (tx: DbTransaction) => {
     const loaded = await loadMarketForUpdate(tx, input.marketId);
 
     if (loaded.market.status === "void") {
@@ -206,13 +229,31 @@ export async function cancelMarket(input: CancelMarketInput): Promise<CancelMark
       throw new Error("Failed to mark market cancelled");
     }
 
+    await insertEvent({
+      aggregateId: input.marketId,
+      aggregateType: "market",
+      db: input.db,
+      occurredAt: cancelledAt,
+      payload: {
+        cancellationId,
+        marketId: input.marketId,
+        reason,
+        refundTotalMicro: refundTotalMicro.toString(),
+        status: "void",
+      },
+      tx,
+      type: "market.voided",
+    });
+
     return {
       cancellation,
       idempotent: false,
       ledgerEntries,
       market,
     };
-  });
+  };
+
+  return input.tx ? operation(input.tx) : input.db.transaction(operation);
 }
 
 export async function previewCancelMarket(
@@ -268,6 +309,70 @@ export async function autoCancelExpiredMarkets(
     cancelledCount: cancelledMarketIds.length,
     cancelledMarketIds,
     errors,
+  };
+}
+
+export async function autoVoidUnresolvedMarkets(
+  input: AutoVoidUnresolvedMarketsInput,
+): Promise<AutoVoidUnresolvedMarketsResult> {
+  const limit = normalizeLimit(input.limit);
+  const voidedMarketIds: string[] = [];
+  const failedMarketIds = new Set<string>();
+  const errors: AutoVoidUnresolvedMarketsResult["errors"] = [];
+
+  for (let index = 0; index < limit; index += 1) {
+    let claimedMarketId: string | null = null;
+
+    try {
+      const voidedMarketId = await input.db.transaction(async (tx) => {
+        const marketId = await claimNextUnresolvedMarketForAutoVoid({
+          excludedMarketIds: [...failedMarketIds],
+          marketIds: input.marketIds,
+          now: input.now,
+          tx,
+        });
+
+        if (!marketId) {
+          return null;
+        }
+
+        claimedMarketId = marketId;
+
+        const result = await cancelMarket({
+          cancelledAt: input.now,
+          db: input.db,
+          marketId,
+          reason: input.reason ?? "auto_cancel_unresolved",
+          tx,
+          ...(input.creatorPenaltyBps === undefined
+            ? {}
+            : { creatorPenaltyBps: input.creatorPenaltyBps }),
+        });
+
+        return result.market.id;
+      });
+
+      if (!voidedMarketId) {
+        break;
+      }
+
+      voidedMarketIds.push(voidedMarketId);
+    } catch (error) {
+      if (claimedMarketId) {
+        failedMarketIds.add(claimedMarketId);
+      }
+
+      errors.push({
+        ...(claimedMarketId ? { marketId: claimedMarketId } : {}),
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return {
+    errors,
+    voidedCount: voidedMarketIds.length,
+    voidedMarketIds,
   };
 }
 
@@ -360,6 +465,42 @@ async function loadMarketForUpdate(
     contracts: attachBinaryContracts(market.id, contracts),
     market,
   };
+}
+
+async function claimNextUnresolvedMarketForAutoVoid(input: {
+  excludedMarketIds: string[];
+  marketIds?: string[] | undefined;
+  now: Date;
+  tx: DbTransaction;
+}): Promise<string | null> {
+  const filters = [
+    or(
+      and(eq(schema.markets.status, "open"), lte(schema.markets.closesAt, input.now)),
+      eq(schema.markets.status, "closed"),
+    ),
+  ];
+
+  if (input.marketIds !== undefined) {
+    if (input.marketIds.length === 0) {
+      return null;
+    }
+
+    filters.push(inArray(schema.markets.id, input.marketIds));
+  }
+
+  if (input.excludedMarketIds.length > 0) {
+    filters.push(notInArray(schema.markets.id, input.excludedMarketIds));
+  }
+
+  const [market] = await input.tx
+    .select({ id: schema.markets.id })
+    .from(schema.markets)
+    .where(and(...filters))
+    .orderBy(asc(schema.markets.closesAt), asc(schema.markets.id))
+    .for("update", { skipLocked: true })
+    .limit(1);
+
+  return market?.id ?? null;
 }
 
 async function loadPositionsForUpdate(
@@ -455,6 +596,16 @@ function assertCanResolve(market: Market) {
   }
 }
 
+function assertResolutionBeforeDeadline(market: Market, now: Date) {
+  if (market.status === "open" && market.closesAt && now >= market.closesAt) {
+    throw new ResolutionDeadlinePassedError({
+      closesAt: market.closesAt,
+      marketId: market.id,
+      now,
+    });
+  }
+}
+
 function assertCanCancel(market: Market) {
   if (market.status === "resolved" || market.status === "void") {
     throw new ResolutionInvalidTransitionError({
@@ -515,5 +666,5 @@ function normalizeLimit(limit: number | undefined): number {
     throw new RangeError("limit must be a positive integer");
   }
 
-  return limit;
+  return Math.min(limit, MAX_AUTO_CANCEL_LIMIT);
 }

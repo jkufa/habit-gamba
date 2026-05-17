@@ -39,6 +39,16 @@
         "zod": "^4.1.13",
       },
     },
+    "apps/worker": {
+      "name": "@habit-gamba/worker",
+      "dependencies": {
+        "@habit-gamba/contracts": "workspace:*",
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/resolution": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
+    },
     "packages/api": {
       "name": "@habit-gamba/api",
       "dependencies": {
@@ -229,6 +239,8 @@
     "@habit-gamba/users": ["@habit-gamba/users@workspace:packages/users"],
 
     "@habit-gamba/wallet": ["@habit-gamba/wallet@workspace:packages/wallet"],
+
+    "@habit-gamba/worker": ["@habit-gamba/worker@workspace:apps/worker"],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 

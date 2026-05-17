@@ -1,5 +1,6 @@
 export {
   ResolutionConfigError,
+  ResolutionDeadlinePassedError,
   ResolutionIdempotencyConflictError,
   ResolutionInvalidTransitionError,
   ResolutionMarketNotFoundError,
@@ -7,6 +8,7 @@ export {
 export { checkResolutionInvariant } from "./lib/invariants";
 export {
   autoCancelExpiredMarkets,
+  autoVoidUnresolvedMarkets,
   cancelMarket,
   previewCancelMarket,
   resolveMarket,
@@ -14,6 +16,8 @@ export {
 export type {
   AutoCancelExpiredMarketsInput,
   AutoCancelExpiredMarketsResult,
+  AutoVoidUnresolvedMarketsInput,
+  AutoVoidUnresolvedMarketsResult,
   Cancellation,
   CancelMarketInput,
   CancelMarketResult,

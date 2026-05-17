@@ -20,6 +20,7 @@ export type ResolveMarketInput = ResolutionConfig & {
   db: DbClient;
   evidence?: Record<string, unknown>;
   marketId: string;
+  now?: Date;
   outcome: ResolutionOutcome;
   resolvedByUserId: string;
   resolvedAt?: Date;
@@ -37,6 +38,7 @@ export type CancelMarketInput = ResolutionConfig & {
   marketId: string;
   reason: string;
   cancelledAt?: Date;
+  tx?: DbTransaction;
 };
 
 export type CancelMarketResult = {
@@ -71,4 +73,21 @@ export type AutoCancelExpiredMarketsResult = {
     marketId: string;
     message: string;
   }>;
+};
+
+export type AutoVoidUnresolvedMarketsInput = ResolutionConfig & {
+  db: DbClient;
+  limit?: number;
+  marketIds?: string[];
+  now: Date;
+  reason?: string;
+};
+
+export type AutoVoidUnresolvedMarketsResult = {
+  errors: Array<{
+    marketId?: string;
+    message: string;
+  }>;
+  voidedCount: number;
+  voidedMarketIds: string[];
 };
