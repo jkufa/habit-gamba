@@ -1,8 +1,7 @@
 import { autoVoidUnresolvedMarkets } from "@habit-gamba/resolution";
 import type { DbClient } from "@habit-gamba/db";
-
-import { createWorkerLogger } from "./logger";
-import type { WorkerLogger } from "./logger";
+import { createLogger, createMetricsRegistry, createWideEvent } from "@habit-gamba/logger";
+import type { Logger, MetricsRegistry, Tracer } from "@habit-gamba/logger";
 
 export const DEFAULT_MARKET_LIFECYCLE_BATCH_LIMIT = 100;
 export const MAX_MARKET_LIFECYCLE_BATCH_LIMIT = 1_000;
@@ -11,8 +10,10 @@ export type MarketLifecycleWorkerInput = {
   db: DbClient;
   env: string;
   limit?: number;
-  logger?: WorkerLogger;
+  logger?: Logger;
+  metrics?: MetricsRegistry;
   now?: Date;
+  tracer?: Tracer;
 };
 
 export type MarketLifecycleWorkerResult = {
@@ -29,7 +30,26 @@ export type MarketLifecycleWorkerResult = {
 export async function runMarketLifecycleWorker(
   input: MarketLifecycleWorkerInput,
 ): Promise<MarketLifecycleWorkerResult> {
-  const logger = input.logger ?? createWorkerLogger({ env: input.env });
+  const logger =
+    input.logger ??
+    createLogger({
+      env: input.env,
+      service: "market-lifecycle-worker",
+    });
+  const metrics = input.metrics ?? createMetricsRegistry();
+  const runs = metrics.counter("habit_gamba_market_lifecycle_worker_runs_total", "Worker runs");
+  const duration = metrics.histogram(
+    "habit_gamba_market_lifecycle_worker_duration_ms",
+    "Worker run duration in milliseconds",
+  );
+  const voided = metrics.counter(
+    "habit_gamba_market_lifecycle_worker_voided_markets_total",
+    "Markets voided by the lifecycle worker",
+  );
+  const wideEvent = createWideEvent(logger, "market_lifecycle_worker.run", {
+    limit: normalizeMarketLifecycleBatchLimit(input.limit),
+  });
+  const span = input.tracer?.startSpan("market_lifecycle_worker.run");
   const startedAt = performance.now();
   const now = input.now ?? new Date();
   const limit = normalizeMarketLifecycleBatchLimit(input.limit);
@@ -48,13 +68,21 @@ export async function runMarketLifecycleWorker(
     voidedMarketIds: result.voidedMarketIds,
   };
 
-  logger[outcome === "success" ? "info" : "error"]("market_lifecycle_worker.run", {
+  runs.add(1, { outcome });
+  duration.observe(durationMs, { outcome });
+  voided.add(result.voidedCount, { outcome });
+  wideEvent.finish(outcome, {
     duration_ms: durationMs,
     error_count: result.errors.length,
     errors: result.errors,
-    outcome,
     voided_count: result.voidedCount,
     voided_market_ids: result.voidedMarketIds,
+  });
+  await span?.end(outcome === "success" ? "ok" : "error", {
+    duration_ms: durationMs,
+    error_count: result.errors.length,
+    outcome,
+    voided_count: result.voidedCount,
   });
 
   return summary;

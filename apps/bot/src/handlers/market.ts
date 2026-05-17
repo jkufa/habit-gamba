@@ -691,7 +691,10 @@ async function postOrUpdateMarketSummary(
   });
 
   await summary.pin().catch((error: unknown) => {
-    console.warn("failed to pin market summary", error);
+    context.services.logger?.error("discord_market_summary_pin_failed", {
+      error,
+      market_id: market.id,
+    });
   });
   await writeMarketDiscordMetadata({
     ...context.services,

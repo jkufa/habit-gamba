@@ -19,6 +19,7 @@ import { and, asc, desc, eq, gt, ilike, ne, or, sql } from "drizzle-orm";
 import { requireInternalBot, requireUser, requireUserByProviderIdentity } from "./auth";
 import { ApiError, errorBody, ok } from "./http";
 import { findContractIdForOutcome } from "./market";
+import { serverObservabilityMiddleware, type ServerObservability } from "./observability";
 import { getLeaderboard, getPortfolio } from "./reads";
 import {
   accountIdentitySchema,
@@ -39,9 +40,14 @@ const INCREMENTAL_REFRESH_TRADE_LIMIT = 25;
 export function createApp(input: {
   botApiToken?: string | undefined;
   db: DbClient;
+  observability?: ServerObservability | undefined;
   pingDb?: () => Promise<void>;
 }) {
   const app = new Hono();
+
+  if (input.observability) {
+    app.use("*", serverObservabilityMiddleware(input.observability));
+  }
 
   app.onError((error, context) => {
     const { body, status } = errorBody(error);
@@ -67,6 +73,14 @@ export function createApp(input: {
         service: "postgres",
       }),
     );
+  });
+
+  app.get("/metrics", (context) => {
+    if (!input.observability) {
+      return context.text("# observability disabled\n");
+    }
+
+    return context.text(input.observability.metrics.render());
   });
 
   app.post("/accounts/register", async (context) => {

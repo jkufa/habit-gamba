@@ -1,3 +1,6 @@
+import { createLogger } from "@habit-gamba/logger";
+import type { Logger, LogLevel, ServiceName } from "@habit-gamba/logger";
+
 import type { DbClient } from "./client";
 import { createId } from "./id";
 import * as schema from "./schema";
@@ -11,6 +14,7 @@ export type InsertEventInput = {
   aggregateType: string;
   db: DbClient;
   id?: string;
+  logger?: Logger;
   occurredAt?: Date;
   payload?: Record<string, unknown>;
   tx?: DbTransaction;
@@ -35,5 +39,34 @@ export async function insertEvent(input: InsertEventInput): Promise<Event> {
     throw new Error("Failed to insert event");
   }
 
+  (input.logger ?? createEventLogger()).info("event_inserted", {
+    aggregate_id: event.aggregateId,
+    aggregate_type: event.aggregateType,
+    event_id: event.id,
+    event_type: event.type,
+    occurred_at: event.occurredAt.toISOString(),
+  });
+
   return event;
+}
+
+function createEventLogger(): Logger {
+  return createLogger({
+    env: process.env.NODE_ENV ?? "development",
+    level: process.env.LOG_LEVEL as LogLevel | undefined,
+    service: toServiceName(process.env.SERVICE_NAME),
+  });
+}
+
+function toServiceName(value: string | undefined): ServiceName {
+  if (
+    value === "bot" ||
+    value === "event-worker" ||
+    value === "market-lifecycle-worker" ||
+    value === "server"
+  ) {
+    return value;
+  }
+
+  return "server";
 }

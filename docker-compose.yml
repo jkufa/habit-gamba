@@ -1,4 +1,40 @@
 services:
+  alloy:
+    command: ["run", "/etc/alloy/config.alloy"]
+    image: grafana/alloy:v1.11.3
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  grafana:
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    image: grafana/grafana:12.3.0
+    ports:
+      - "3002:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - habit-gamba-grafana:/var/lib/grafana
+
+  loki:
+    command: ["-config.file=/etc/loki/loki.yml"]
+    image: grafana/loki:3.5.8
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - habit-gamba-loki:/loki
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -15,5 +51,27 @@ services:
     volumes:
       - habit-gamba-postgres:/var/lib/postgresql/data
 
+  prometheus:
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    image: prom/prometheus:v3.8.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - habit-gamba-prometheus:/prometheus
+
+  tempo:
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    image: grafana/tempo:2.9.0
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - habit-gamba-tempo:/var/tempo
+
 volumes:
+  habit-gamba-grafana:
+  habit-gamba-loki:
   habit-gamba-postgres:
+  habit-gamba-prometheus:
+  habit-gamba-tempo:

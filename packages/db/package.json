@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@habit-gamba/env": "workspace:*",
+    "@habit-gamba/logger": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "postgres": "^3.4.7",
     "ulid": "^3.0.2"

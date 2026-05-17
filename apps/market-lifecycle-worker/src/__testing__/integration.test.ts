@@ -1,5 +1,6 @@
 import { createBinaryMarket, openMarket } from "@habit-gamba/contracts";
 import { createDbClient, createId, schema } from "@habit-gamba/db";
+import { createMetricsRegistry, type Logger } from "@habit-gamba/logger";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -36,14 +37,18 @@ maybeDescribe("market lifecycle worker integration", () => {
       marketId: market.id,
       openedAt: new Date(now.getTime() - 1_000),
     });
+    const logger: Logger = {
+      child: () => logger,
+      error: () => {},
+      info: () => {},
+    };
+    const metrics = createMetricsRegistry();
 
     const result = await runMarketLifecycleWorker({
       db: client.db,
       env: "test",
-      logger: {
-        error: () => {},
-        info: () => {},
-      },
+      logger,
+      metrics,
     });
     const [updatedMarket] = await client.db
       .select()
@@ -58,6 +63,7 @@ maybeDescribe("market lifecycle worker integration", () => {
 
     expect(result.outcome).toBe("success");
     expect(result.voidedMarketIds).toContain(market.id);
+    expect(metrics.render()).toContain("habit_gamba_market_lifecycle_worker_runs_total");
     expect(updatedMarket?.status).toBe("void");
     expect(event?.type).toBe("market.voided");
   });

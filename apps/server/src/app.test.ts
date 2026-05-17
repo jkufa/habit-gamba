@@ -14,12 +14,14 @@ import type {
   Serialized,
 } from "@habit-gamba/api";
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
+import { createLogger } from "@habit-gamba/logger";
 import { grantUserRole } from "@habit-gamba/users";
 import { creditRep } from "@habit-gamba/wallet";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createApp } from "./app";
+import { createServerObservability } from "./observability";
 
 const databaseUrl = process.env.DATABASE_URL;
 const maybeDescribe = databaseUrl ? describe : describe.skip;
@@ -54,6 +56,39 @@ maybeDescribe("server API", () => {
         service: "server",
       },
     });
+  });
+
+  it("emits request observability and exposes metrics", async () => {
+    const lines: string[] = [];
+    const observability = createServerObservability({
+      env: "test",
+      logger: createLogger({
+        env: "test",
+        service: "server",
+        write: (line) => lines.push(line),
+      }),
+    });
+    const observedApp = createApp({
+      botApiToken: "server-test-bot-token",
+      db: client.db,
+      observability,
+    });
+    const response = await observedApp.request("/health", {
+      headers: { "X-Request-Id": "request-test-1" },
+    });
+    const metrics = await observedApp.request("/metrics");
+    const parsed = JSON.parse(lines[0] ?? "{}") as Record<string, unknown>;
+
+    expect(response.headers.get("X-Request-Id")).toBe("request-test-1");
+    expect(parsed).toMatchObject({
+      event: "http_request",
+      method: "GET",
+      outcome: "success",
+      request_id: "request-test-1",
+      service: "server",
+      status_code: 200,
+    });
+    expect(await metrics.text()).toContain("habit_gamba_http_requests_total");
   });
 
   it("validates writes and requires an existing active header identity", async () => {

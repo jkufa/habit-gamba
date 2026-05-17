@@ -20,7 +20,19 @@
         "@habit-gamba/api": "workspace:*",
         "@habit-gamba/db": "workspace:*",
         "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
         "discord.js": "^14.26.4",
+      },
+    },
+    "apps/market-lifecycle-worker": {
+      "name": "@habit-gamba/market-lifecycle-worker",
+      "dependencies": {
+        "@habit-gamba/contracts": "workspace:*",
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
+        "@habit-gamba/resolution": "workspace:*",
+        "drizzle-orm": "^0.45.1",
       },
     },
     "apps/server": {
@@ -31,22 +43,13 @@
         "@habit-gamba/db": "workspace:*",
         "@habit-gamba/env": "workspace:*",
         "@habit-gamba/exchange": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
         "@habit-gamba/resolution": "workspace:*",
         "@habit-gamba/users": "workspace:*",
         "@habit-gamba/wallet": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "hono": "^4.10.7",
         "zod": "^4.1.13",
-      },
-    },
-    "apps/worker": {
-      "name": "@habit-gamba/worker",
-      "dependencies": {
-        "@habit-gamba/contracts": "workspace:*",
-        "@habit-gamba/db": "workspace:*",
-        "@habit-gamba/env": "workspace:*",
-        "@habit-gamba/resolution": "workspace:*",
-        "drizzle-orm": "^0.45.1",
       },
     },
     "packages/api": {
@@ -71,6 +74,7 @@
       "name": "@habit-gamba/db",
       "dependencies": {
         "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "postgres": "^3.4.7",
         "ulid": "^3.0.2",
@@ -93,6 +97,9 @@
         "@habit-gamba/wallet": "workspace:*",
         "drizzle-orm": "^0.45.1",
       },
+    },
+    "packages/logger": {
+      "name": "@habit-gamba/logger",
     },
     "packages/notification": {
       "name": "@habit-gamba/notification",
@@ -228,6 +235,10 @@
 
     "@habit-gamba/exchange": ["@habit-gamba/exchange@workspace:packages/exchange"],
 
+    "@habit-gamba/logger": ["@habit-gamba/logger@workspace:packages/logger"],
+
+    "@habit-gamba/market-lifecycle-worker": ["@habit-gamba/market-lifecycle-worker@workspace:apps/market-lifecycle-worker"],
+
     "@habit-gamba/notification": ["@habit-gamba/notification@workspace:packages/notification"],
 
     "@habit-gamba/qa": ["@habit-gamba/qa@workspace:packages/qa"],
@@ -239,8 +250,6 @@
     "@habit-gamba/users": ["@habit-gamba/users@workspace:packages/users"],
 
     "@habit-gamba/wallet": ["@habit-gamba/wallet@workspace:packages/wallet"],
-
-    "@habit-gamba/worker": ["@habit-gamba/worker@workspace:apps/worker"],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 

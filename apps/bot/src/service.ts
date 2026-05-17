@@ -18,6 +18,7 @@ import type {
   ResolveMarketResponse,
   Serialized,
 } from "@habit-gamba/api";
+import type { Logger } from "@habit-gamba/logger";
 
 import { formatMicro, formatPercent, parseDecimalMicro } from "./money";
 import type { Actor } from "./permissions";
@@ -35,6 +36,7 @@ export type DiscordIdentity = {
 export type BotServices = {
   apiBaseUrl: string;
   botApiToken: string;
+  logger?: Logger | undefined;
 };
 
 export type LastTradeRefresh = {

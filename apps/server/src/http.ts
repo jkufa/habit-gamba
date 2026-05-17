@@ -131,8 +131,6 @@ function mapError(error: unknown): ApiError {
     );
   }
 
-  console.error(error);
-
   return new ApiError(500, "INTERNAL_SERVER_ERROR", "Internal server error");
 }
 

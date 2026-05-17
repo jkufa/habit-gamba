@@ -1,5 +1,5 @@
 {
-  "name": "@habit-gamba/worker",
+  "name": "@habit-gamba/market-lifecycle-worker",
   "type": "module",
   "scripts": {
     "build": "bun run check-types",
@@ -12,6 +12,7 @@
     "@habit-gamba/contracts": "workspace:*",
     "@habit-gamba/db": "workspace:*",
     "@habit-gamba/env": "workspace:*",
+    "@habit-gamba/logger": "workspace:*",
     "@habit-gamba/resolution": "workspace:*",
     "drizzle-orm": "^0.45.1"
   }

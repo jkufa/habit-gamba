@@ -193,7 +193,6 @@ export function getDiscordMetadata(metadata: Record<string, unknown>) {
 
 export async function replyError(interaction: Interaction, error: unknown) {
   const message = userFacingErrorMessage(error);
-  console.error("discord interaction error", error);
 
   if (interaction.isRepliable()) {
     const payload = {

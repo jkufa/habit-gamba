@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { createWorkerLogger } from "../logger";
+import { createLogger } from "@habit-gamba/logger";
 
-describe("worker logger", () => {
+describe("market lifecycle worker logger", () => {
   it("emits JSON logs with observability-compatible fields and top-level redaction", () => {
     const lines: string[] = [];
-    const logger = createWorkerLogger({
+    const logger = createLogger({
       env: "test",
+      service: "market-lifecycle-worker",
       write: (line) => lines.push(line),
     });
 

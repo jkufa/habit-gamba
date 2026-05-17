@@ -7,6 +7,7 @@ export const baseEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   LOG_LEVEL: logLevelSchema.default("info"),
   NODE_ENV: nodeEnvSchema.default("development"),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
 export const serverEnvSchema = baseEnvSchema.extend({
@@ -23,6 +24,7 @@ export const botEnvSchema = baseEnvSchema.extend({
 });
 export const botRuntimeEnvSchema = botEnvSchema.extend({
   API_BASE_URL: z.string().url(),
+  BOT_METRICS_PORT: z.coerce.number().int().positive().max(65_535).optional(),
   BOT_API_TOKEN: z.string().min(1),
 });
 
@@ -34,6 +36,7 @@ export type BotEnv = BaseEnv & {
 };
 export type BotRuntimeEnv = BotEnv & {
   API_BASE_URL: string;
+  BOT_METRICS_PORT?: number | undefined;
   BOT_API_TOKEN: string;
 };
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

@@ -1,11 +1,22 @@
 import { createDbClient } from "@habit-gamba/db";
 import { loadBaseEnv } from "@habit-gamba/env";
+import { createLogger, createMetricsRegistry, createTracer } from "@habit-gamba/logger";
 
-import { createWorkerLogger } from "./logger";
 import { runMarketLifecycleWorker } from "./service";
 
 const env = loadBaseEnv();
-const logger = createWorkerLogger({ env: env.NODE_ENV });
+process.env.SERVICE_NAME = "market-lifecycle-worker";
+const logger = createLogger({
+  env: env.NODE_ENV,
+  level: env.LOG_LEVEL,
+  service: "market-lifecycle-worker",
+});
+const metrics = createMetricsRegistry();
+const tracer = createTracer({
+  endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+  env: env.NODE_ENV,
+  service: "market-lifecycle-worker",
+});
 const { db, sql } = createDbClient({ databaseUrl: env.DATABASE_URL });
 
 try {
@@ -15,6 +26,8 @@ try {
     env: env.NODE_ENV,
     ...(limit === undefined ? {} : { limit }),
     logger,
+    metrics,
+    tracer,
   });
 
   await sql.end();
