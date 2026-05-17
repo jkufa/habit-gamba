@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveMarketCommand } from "../service";
+import { getLeaderboardCommand, resolveMarketCommand } from "../service";
 
 describe("bot API service", () => {
   afterEach(() => {
@@ -67,7 +67,72 @@ describe("bot API service", () => {
     expect(result.market.contracts).toHaveLength(2);
     expect(result.market.contracts[0]?.shareSupplyMicro).toBe(0n);
   });
+
+  it("fetches and parses global leaderboard entries", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            entries: [
+              {
+                balance: {
+                  availableAmountMicro: "1234000000",
+                  creditLimitMicro: "0",
+                  currency: "REP",
+                  lockedAmountMicro: "0",
+                  userId: "user-1",
+                },
+                rank: 1,
+                user: userResponse(),
+              },
+            ],
+          },
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getLeaderboardCommand({
+      apiBaseUrl: "https://api.example.test",
+      botApiToken: "bot-token",
+      limit: 10,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("/leaderboard?limit=10", "https://api.example.test"),
+      {
+        body: undefined,
+        headers: {
+          Authorization: "Bearer bot-token",
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      },
+    );
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]?.balance.availableAmountMicro).toBe(1234000000n);
+    expect(result.entries[0]?.user.displayName).toBe("Leaderboard User");
+  });
 });
+
+function userResponse() {
+  return {
+    createdAt: "2026-05-17T17:44:29.015Z",
+    displayName: "Leaderboard User",
+    handle: "leaderboard-user",
+    id: "user-1",
+    metadata: {},
+    provider: "discord",
+    providerUserId: "discord-1",
+    status: "active",
+    updatedAt: "2026-05-17T17:44:29.015Z",
+  };
+}
 
 function marketResponse() {
   return {

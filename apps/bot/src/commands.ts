@@ -17,6 +17,17 @@ export const commandData = [
     .setDescription("View your market positions")
     .addSubcommand((command) => command.setName("list").setDescription("List your positions")),
   new SlashCommandBuilder()
+    .setName("leaderboard")
+    .setDescription("Show the global REP leaderboard")
+    .addIntegerOption((option) =>
+      option
+        .setName("limit")
+        .setDescription("Number of entries to show")
+        .setMinValue(1)
+        .setMaxValue(25),
+    )
+    .addBooleanOption((option) => option.setName("private").setDescription("Reply privately")),
+  new SlashCommandBuilder()
     .setName("market")
     .setDescription("Create, view, trade, and resolve markets")
     .addSubcommand(createMarketCommand)

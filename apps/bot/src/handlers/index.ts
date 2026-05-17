@@ -2,6 +2,7 @@ import type { Interaction } from "discord.js";
 
 import { autocompleteMarkets, getDiscordUser } from "../service";
 import { handleAccount } from "./account";
+import { handleLeaderboard } from "./leaderboard";
 import { handleMarket, handleMarketButton, handleMarketModal } from "./market";
 import { handlePosition } from "./position";
 import type { BotHandlerContext } from "./context";
@@ -63,6 +64,11 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
 
   if (interaction.commandName === "position") {
     await handlePosition(context, interaction);
+    return;
+  }
+
+  if (interaction.commandName === "leaderboard") {
+    await handleLeaderboard(context, interaction);
     return;
   }
 

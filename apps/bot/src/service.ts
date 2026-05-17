@@ -79,6 +79,12 @@ export type BotPositionView = {
   };
 };
 
+export type BotLeaderboardEntry = {
+  balance: BotBalance;
+  rank: number;
+  user: BotUser;
+};
+
 export type BotApiErrorBody = {
   error?: {
     code: string;
@@ -233,6 +239,23 @@ export async function listPositionsCommand(
 
   return {
     positions: result.positions.map(parsePositionView),
+  };
+}
+
+export async function getLeaderboardCommand(
+  input: BotServices & { limit?: number },
+): Promise<{ entries: BotLeaderboardEntry[] }> {
+  const params = new URLSearchParams();
+
+  if (input.limit !== undefined) {
+    params.set("limit", String(input.limit));
+  }
+
+  const query = params.size > 0 ? `?${params}` : "";
+  const result = await request(input, `/leaderboard${query}`, { method: "GET" });
+
+  return {
+    entries: result.entries.map(parseLeaderboardEntry),
   };
 }
 
@@ -533,6 +556,14 @@ function parsePositionView(value: any) {
     },
     market: parseMarket(value.market),
     position: parsePosition(value.position),
+  };
+}
+
+function parseLeaderboardEntry(value: any): BotLeaderboardEntry {
+  return {
+    balance: parseBalance(value.balance),
+    rank: value.rank,
+    user: parseUser(value.user),
   };
 }
 
