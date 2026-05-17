@@ -1,6 +1,7 @@
-import { closeMarket, createBinaryMarket, openMarket, voidMarket } from "@habit-gamba/contracts";
+import { createBinaryMarket, openMarket } from "@habit-gamba/contracts";
 import { repToMicro } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
+import { cancelMarket, resolveMarket } from "@habit-gamba/resolution";
 import type { DbClient } from "@habit-gamba/db";
 
 import type { QaFixture, QaScenarioName } from "./types";
@@ -32,6 +33,8 @@ export function buildScenario(input: {
 
 function buildHappyPath(input: { db: DbClient; fixture: QaFixture; qaRunId: string }): QaAction[] {
   const marketIdRef = { current: "" };
+  const contractIdRef = { current: "" };
+  const exchange = createExchange({ defaultLiquidityMicro: repToMicro(100n) });
 
   return [
     {
@@ -45,6 +48,7 @@ function buildHappyPath(input: { db: DbClient; fixture: QaFixture; qaRunId: stri
           title: "QA happy path market",
         });
         marketIdRef.current = market.id;
+        contractIdRef.current = market.contracts[0].id;
       },
     },
     {
@@ -59,12 +63,37 @@ function buildHappyPath(input: { db: DbClient; fixture: QaFixture; qaRunId: stri
       },
     },
     {
-      name: "close-market",
+      name: "buy-yes-and-no",
       run: async () => {
-        await closeMarket({
-          closedAt: new Date("2030-01-02T00:00:01.000Z"),
+        await exchange.buy({
+          amountMicro: repToMicro(5n),
+          contractId: contractIdRef.current,
+          db: input.db,
+          idempotencyKey: `${input.qaRunId}:happy-path:buy-yes`,
+          now: new Date("2030-01-01T00:00:01.000Z"),
+          outcome: "YES",
+          userId: input.fixture.users[1]?.id ?? fail("missing QA bettor"),
+        });
+        await exchange.buy({
+          amountMicro: repToMicro(3n),
+          contractId: contractIdRef.current,
+          db: input.db,
+          idempotencyKey: `${input.qaRunId}:happy-path:buy-no`,
+          now: new Date("2030-01-01T00:00:02.000Z"),
+          outcome: "NO",
+          userId: input.fixture.users[2]?.id ?? fail("missing QA bettor"),
+        });
+      },
+    },
+    {
+      name: "resolve-market",
+      run: async () => {
+        await resolveMarket({
           db: input.db,
           marketId: marketIdRef.current,
+          outcome: "YES",
+          resolvedAt: new Date("2030-01-02T00:00:01.000Z"),
+          resolvedByUserId: input.fixture.users[0]?.id ?? fail("missing QA resolver"),
         });
       },
     },
@@ -77,6 +106,8 @@ function buildCancellation(input: {
   qaRunId: string;
 }): QaAction[] {
   const marketIdRef = { current: "" };
+  const contractIdRef = { current: "" };
+  const exchange = createExchange({ defaultLiquidityMicro: repToMicro(100n) });
 
   return [
     {
@@ -90,6 +121,7 @@ function buildCancellation(input: {
           title: "QA cancellation market",
         });
         marketIdRef.current = market.id;
+        contractIdRef.current = market.contracts[0].id;
       },
     },
     {
@@ -104,25 +136,38 @@ function buildCancellation(input: {
       },
     },
     {
-      name: "void-market",
+      name: "buy-before-cancel",
       run: async () => {
-        await voidMarket({
+        await exchange.buy({
+          amountMicro: repToMicro(4n),
+          contractId: contractIdRef.current,
           db: input.db,
-          marketId: marketIdRef.current,
-          voidedAt: new Date("2030-02-01T00:00:01.000Z"),
+          idempotencyKey: `${input.qaRunId}:cancellation:buy-yes`,
+          now: new Date("2030-02-01T00:00:01.000Z"),
+          outcome: "YES",
+          userId: input.fixture.users[1]?.id ?? fail("missing QA bettor"),
+        });
+        await exchange.buy({
+          amountMicro: repToMicro(2n),
+          contractId: contractIdRef.current,
+          db: input.db,
+          idempotencyKey: `${input.qaRunId}:cancellation:buy-no`,
+          now: new Date("2030-02-01T00:00:02.000Z"),
+          outcome: "NO",
+          userId: input.fixture.users[2]?.id ?? fail("missing QA bettor"),
         });
       },
     },
     {
-      name: "reject-terminal-void",
+      name: "cancel-market",
       run: async () => {
-        try {
-          await voidMarket({ db: input.db, marketId: marketIdRef.current });
-        } catch {
-          return;
-        }
-
-        throw new Error("Expected terminal void to reject");
+        await cancelMarket({
+          cancelledAt: new Date("2030-02-01T00:00:03.000Z"),
+          creatorPenaltyBps: 1000,
+          db: input.db,
+          marketId: marketIdRef.current,
+          reason: "qa cancellation scenario",
+        });
       },
     },
   ];
@@ -146,6 +191,7 @@ function buildStress(input: {
   for (let index = 0; index < 25; index += 1) {
     const scenario = random() < 0.4 ? "cancellation" : "happy-path";
     const marketIdRef = { current: "" };
+    const contractIdRef = { current: "" };
 
     actions.push({
       name: `stress-${index}-create-market`,
@@ -159,6 +205,7 @@ function buildStress(input: {
           title: `QA stress market ${index}`,
         });
         marketIdRef.current = market.id;
+        contractIdRef.current = market.contracts[0].id;
       },
     });
     actions.push({
@@ -175,16 +222,62 @@ function buildStress(input: {
 
     if (scenario === "cancellation") {
       actions.push({
-        name: `stress-${index}-void-market`,
+        name: `stress-${index}-buy-before-cancel`,
         run: async () => {
-          await voidMarket({ db: input.db, marketId: marketIdRef.current });
+          const exchange = createExchange({ defaultLiquidityMicro: repToMicro(100n) });
+          await exchange.buy({
+            amountMicro: repToMicro(1n),
+            contractId: contractIdRef.current,
+            db: input.db,
+            idempotencyKey: `${input.qaRunId}:stress:${index}:buy-cancel`,
+            now: new Date(`2030-03-${String((index % 20) + 1).padStart(2, "0")}T00:00:01.000Z`),
+            outcome: "NO",
+            userId:
+              input.fixture.users[(index + 1) % input.fixture.users.length]?.id ??
+              fail("missing QA user"),
+          });
+        },
+      });
+      actions.push({
+        name: `stress-${index}-cancel-market`,
+        run: async () => {
+          await cancelMarket({
+            creatorPenaltyBps: 1000,
+            db: input.db,
+            marketId: marketIdRef.current,
+            reason: `qa stress cancellation ${index}`,
+          });
         },
       });
     } else {
       actions.push({
-        name: `stress-${index}-close-market`,
+        name: `stress-${index}-buy-before-resolve`,
         run: async () => {
-          await closeMarket({ db: input.db, marketId: marketIdRef.current });
+          const exchange = createExchange({ defaultLiquidityMicro: repToMicro(100n) });
+          await exchange.buy({
+            amountMicro: repToMicro(1n),
+            contractId: contractIdRef.current,
+            db: input.db,
+            idempotencyKey: `${input.qaRunId}:stress:${index}:buy-resolve`,
+            now: new Date(`2030-03-${String((index % 20) + 1).padStart(2, "0")}T00:00:01.000Z`),
+            outcome: "YES",
+            userId:
+              input.fixture.users[(index + 1) % input.fixture.users.length]?.id ??
+              fail("missing QA user"),
+          });
+        },
+      });
+      actions.push({
+        name: `stress-${index}-resolve-market`,
+        run: async () => {
+          await resolveMarket({
+            db: input.db,
+            marketId: marketIdRef.current,
+            outcome: "YES",
+            resolvedByUserId:
+              input.fixture.users[index % input.fixture.users.length]?.id ??
+              fail("missing QA resolver"),
+          });
         },
       });
     }
@@ -261,12 +354,14 @@ function buildTradeStress(input: {
       },
     },
     {
-      name: "trade-stress-close-market",
+      name: "trade-stress-resolve-market",
       run: async () => {
-        await closeMarket({
-          closedAt: new Date("2030-04-02T00:00:01.000Z"),
+        await resolveMarket({
           db: input.db,
           marketId: marketIdRef.current,
+          outcome: "YES",
+          resolvedAt: new Date("2030-04-02T00:00:01.000Z"),
+          resolvedByUserId: input.fixture.users[0]?.id ?? fail("missing QA resolver"),
         });
       },
     },

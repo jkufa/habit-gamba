@@ -22,6 +22,20 @@ export async function debitRep(input: RepWriteInput): Promise<WalletWriteResult>
   });
 }
 
+export async function payoutRep(input: RepWriteInput): Promise<WalletWriteResult> {
+  return writeRep(input, {
+    amountDeltaMicro: input.amountMicro,
+    reason: "payout",
+  });
+}
+
+export async function penalizeRep(input: RepWriteInput): Promise<WalletWriteResult> {
+  return writeRep(input, {
+    amountDeltaMicro: -input.amountMicro,
+    reason: "adjustment",
+  });
+}
+
 export async function refundRep(input: RepWriteInput): Promise<WalletWriteResult> {
   return writeRep(input, {
     amountDeltaMicro: input.amountMicro,

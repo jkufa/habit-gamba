@@ -18,6 +18,7 @@
     "@habit-gamba/db": "workspace:*",
     "@habit-gamba/env": "workspace:*",
     "@habit-gamba/exchange": "workspace:*",
+    "@habit-gamba/resolution": "workspace:*",
     "@habit-gamba/users": "workspace:*",
     "@habit-gamba/wallet": "workspace:*",
     "drizzle-orm": "^0.45.1",

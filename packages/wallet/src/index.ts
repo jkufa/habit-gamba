@@ -9,4 +9,4 @@ export type {
   WalletDbInput,
   WalletWriteResult,
 } from "./lib/types";
-export { creditRep, debitRep, refundRep } from "./lib/writes";
+export { creditRep, debitRep, payoutRep, penalizeRep, refundRep } from "./lib/writes";

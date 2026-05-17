@@ -44,7 +44,6 @@ export async function checkGlobalDatabaseInvariant(
   const marketIds = await resolveMarketIds(input);
   const markets = await input.db.select().from(schema.markets);
   const contracts = await input.db.select().from(schema.contracts);
-  const trades = await input.db.select().from(schema.trades);
   const positions = await input.db.select().from(schema.positions);
   const marketsById = new Map(markets.map((market) => [market.id, market]));
   const contractsById = new Map(contracts.map((contract) => [contract.id, contract]));
@@ -54,43 +53,28 @@ export async function checkGlobalDatabaseInvariant(
       .filter((contract) => !scopedMarketIds || scopedMarketIds.has(contract.marketId))
       .map((contract) => contract.id),
   );
-  const scopedTrades = trades.filter(
-    (trade) =>
-      !scopedMarketIds ||
-      scopedMarketIds.has(trade.marketId) ||
-      scopedContractIds.has(trade.contractId),
-  );
   const scopedPositions = positions.filter((position) =>
     scopedContractIds.has(position.contractId),
   );
-
-  for (const trade of scopedTrades) {
-    const market = marketsById.get(trade.marketId);
-
-    if (!market) {
-      continue;
-    }
-
-    if (market.status === "resolved" || market.status === "void") {
-      failures.push({
-        code: "terminal_market_has_trade",
-        entity: { id: trade.id, type: "trade" },
-        message: "Terminal market has trade rows",
-        details: { marketId: market.id, status: market.status },
-      });
-    }
-  }
 
   for (const position of scopedPositions) {
     const contract = contractsById.get(position.contractId);
     const market = contract ? marketsById.get(contract.marketId) : undefined;
 
-    if (market?.status === "void") {
+    if (
+      (market?.status === "resolved" || market?.status === "void") &&
+      position.quantityMicro !== 0n
+    ) {
       failures.push({
-        code: "void_market_has_position",
+        code: "terminal_market_has_open_position",
         entity: { id: position.id, type: "position" },
-        message: "Void market has position rows before refund semantics exist",
-        details: { contractId: position.contractId, marketId: market.id },
+        message: "Terminal market has nonzero position",
+        details: {
+          contractId: position.contractId,
+          marketId: market.id,
+          quantityMicro: position.quantityMicro,
+          status: market.status,
+        },
       });
     }
   }

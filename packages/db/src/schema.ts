@@ -253,3 +253,27 @@ export const resolutions = pgTable(
   },
   (table) => [unique("resolutions_market_unique").on(table.marketId)],
 );
+
+export const cancellations = pgTable(
+  "cancellations",
+  {
+    id: idColumn(),
+    marketId: text("market_id")
+      .notNull()
+      .references(() => markets.id),
+    reason: text("reason").notNull(),
+    refundTotalMicro: bigint("refund_total_micro", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    creatorPenaltyMicro: bigint("creator_penalty_micro", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAtColumn(),
+  },
+  (table) => [
+    unique("cancellations_market_unique").on(table.marketId),
+    check("cancellations_refund_total_nonnegative", sql`${table.refundTotalMicro} >= 0`),
+    check("cancellations_creator_penalty_nonnegative", sql`${table.creatorPenaltyMicro} >= 0`),
+  ],
+);

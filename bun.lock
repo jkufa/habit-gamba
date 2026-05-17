@@ -75,6 +75,7 @@
         "@habit-gamba/db": "workspace:*",
         "@habit-gamba/env": "workspace:*",
         "@habit-gamba/exchange": "workspace:*",
+        "@habit-gamba/resolution": "workspace:*",
         "@habit-gamba/users": "workspace:*",
         "@habit-gamba/wallet": "workspace:*",
         "drizzle-orm": "^0.45.1",
@@ -83,6 +84,13 @@
     },
     "packages/resolution": {
       "name": "@habit-gamba/resolution",
+      "dependencies": {
+        "@habit-gamba/contracts": "workspace:*",
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/exchange": "workspace:*",
+        "@habit-gamba/wallet": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+      },
     },
     "packages/users": {
       "name": "@habit-gamba/users",

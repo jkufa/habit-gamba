@@ -48,6 +48,7 @@ maybeDescribe("qa setup and runner", () => {
       "after-action",
       "after-action",
       "after-action",
+      "after-action",
       "after-scenario",
     ]);
   });
