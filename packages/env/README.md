@@ -1,3 +1,5 @@
 # `@habit-gamba/env`
 
-Shared Zod env parsing. `DATABASE_URL` is required, with small typed loaders for base and server runtime config.
+Shared Zod env parsing. Database-backed services use `loadBaseEnv` or
+`loadServerEnv`; bot runtime uses `loadBotRuntimeEnv` and does not require direct
+database access.

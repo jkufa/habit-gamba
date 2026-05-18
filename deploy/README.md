@@ -66,7 +66,7 @@ compromise for 23:59 New York during EDT; during EST it runs at 22:59 New York.
 
 ## Environment Variables
 
-Set these in both Railway environments:
+Set these on services that need them:
 
 ```txt
 BOT_API_TOKEN=<shared secret between bot and api-server>
@@ -75,8 +75,13 @@ LOG_LEVEL=info
 NODE_ENV=production
 ```
 
-For `api-server`, Railway provides `PORT`. Do not hard-code `SERVER_PORT` unless
-you need to override it.
+`api-server` needs `BOT_API_TOKEN` and `DATABASE_URL`. Railway provides `PORT`.
+Do not hard-code `SERVER_PORT` unless you need to override it.
+
+`market-lifecycle-worker` needs `DATABASE_URL`.
+
+`discord-bot` needs `BOT_API_TOKEN`, but it does not need direct database
+access.
 
 For `discord-bot` staging:
 

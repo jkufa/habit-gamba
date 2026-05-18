@@ -27,7 +27,6 @@ describe("loadBotEnv", () => {
   it("accepts Discord bot config", () => {
     expect(
       loadBotEnv({
-        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
         DISCORD_APPLICATION_ID: "app",
         DISCORD_BOT_TOKEN: "token",
         DISCORD_DEV_GUILD_ID: "guild",
@@ -44,7 +43,6 @@ describe("loadBotEnv", () => {
       loadBotRuntimeEnv({
         API_BASE_URL: "http://localhost:3000",
         BOT_API_TOKEN: "bot-token",
-        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
         DISCORD_APPLICATION_ID: "app",
         DISCORD_BOT_TOKEN: "token",
         DISCORD_DEV_GUILD_ID: "guild",
@@ -61,7 +59,6 @@ describe("loadBotEnv", () => {
       loadBotRuntimeEnv({
         API_BASE_URL: "http://api-server.railway.internal:3000",
         BOT_API_TOKEN: "bot-token",
-        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
         DISCORD_APPLICATION_ID: "app",
         DISCORD_BOT_TOKEN: "token",
         NODE_ENV: "production",
@@ -76,7 +73,6 @@ describe("loadBotEnv", () => {
   it("rejects missing API config for bot runtime", () => {
     expect(() =>
       loadBotRuntimeEnv({
-        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
         DISCORD_APPLICATION_ID: "app",
         DISCORD_BOT_TOKEN: "token",
         DISCORD_DEV_GUILD_ID: "guild",

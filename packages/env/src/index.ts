@@ -10,6 +10,12 @@ export const baseEnvSchema = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
+export const serviceEnvSchema = z.object({
+  LOG_LEVEL: logLevelSchema.default("info"),
+  NODE_ENV: nodeEnvSchema.default("development"),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+});
+
 export const serverEnvSchema = baseEnvSchema.extend({
   BOT_API_TOKEN: z.string().min(1),
   PORT: z.coerce.number().int().positive().max(65_535).optional(),
@@ -17,7 +23,7 @@ export const serverEnvSchema = baseEnvSchema.extend({
   SERVER_PORT: z.coerce.number().int().positive().max(65_535).optional(),
 });
 
-export const botEnvSchema = baseEnvSchema.extend({
+export const botEnvSchema = serviceEnvSchema.extend({
   DISCORD_APPLICATION_ID: z.string().min(1),
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_DEV_GUILD_ID: z.string().min(1).optional(),
