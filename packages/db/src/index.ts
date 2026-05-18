@@ -12,4 +12,5 @@ export type {
   InvariantReport,
   InvariantScope,
 } from "./invariants";
+export { runMigrations } from "./migrations";
 export * as schema from "./schema";

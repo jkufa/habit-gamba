@@ -1,5 +1,4 @@
-import { createDbClient, createId } from "@habit-gamba/db";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { createDbClient, createId, runMigrations } from "@habit-gamba/db";
 
 import { createApp } from "../../../server/src/app";
 import type { Actor } from "../permissions";
@@ -39,7 +38,7 @@ export async function createBotApiTestProvider(input: {
 }) {
   const client = createDbClient({ databaseUrl: input.databaseUrl, max: 8 });
 
-  await migrate(client.db, { migrationsFolder: input.migrationsFolder });
+  await runMigrations({ db: client.db, migrationsFolder: input.migrationsFolder });
 
   const app = createApp({
     botApiToken: BOT_API_TOKEN,
