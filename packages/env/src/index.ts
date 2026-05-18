@@ -12,15 +12,15 @@ export const baseEnvSchema = z.object({
 
 export const serverEnvSchema = baseEnvSchema.extend({
   BOT_API_TOKEN: z.string().min(1),
+  PORT: z.coerce.number().int().positive().max(65_535).optional(),
   SERVER_HOST: z.string().default("0.0.0.0"),
-  SERVER_PORT: z.coerce.number().int().positive().max(65_535).default(3000),
+  SERVER_PORT: z.coerce.number().int().positive().max(65_535).optional(),
 });
 
 export const botEnvSchema = baseEnvSchema.extend({
   DISCORD_APPLICATION_ID: z.string().min(1),
   DISCORD_BOT_TOKEN: z.string().min(1),
   DISCORD_DEV_GUILD_ID: z.string().min(1).optional(),
-  DEV_GUILD_ID: z.string().min(1).optional(),
 });
 export const botRuntimeEnvSchema = botEnvSchema.extend({
   API_BASE_URL: z.string().url(),
@@ -29,24 +29,23 @@ export const botRuntimeEnvSchema = botEnvSchema.extend({
 });
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
-export type BotEnv = BaseEnv & {
-  DISCORD_APPLICATION_ID: string;
-  DISCORD_BOT_TOKEN: string;
-  DISCORD_DEV_GUILD_ID: string;
+export type BotEnv = z.infer<typeof botEnvSchema>;
+export type BotRuntimeEnv = z.infer<typeof botRuntimeEnvSchema>;
+export type ServerEnv = Omit<z.infer<typeof serverEnvSchema>, "SERVER_PORT"> & {
+  SERVER_PORT: number;
 };
-export type BotRuntimeEnv = BotEnv & {
-  API_BASE_URL: string;
-  BOT_METRICS_PORT?: number | undefined;
-  BOT_API_TOKEN: string;
-};
-export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 export function loadBaseEnv(source: NodeJS.ProcessEnv = process.env): BaseEnv {
   return baseEnvSchema.parse(source);
 }
 
 export function loadServerEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
-  return serverEnvSchema.parse(source);
+  const parsed = serverEnvSchema.parse(source);
+
+  return {
+    ...parsed,
+    SERVER_PORT: parsed.SERVER_PORT ?? parsed.PORT ?? 3000,
+  };
 }
 
 export function loadBotEnv(source: NodeJS.ProcessEnv = process.env): BotEnv {
@@ -55,21 +54,22 @@ export function loadBotEnv(source: NodeJS.ProcessEnv = process.env): BotEnv {
 }
 
 export function loadBotRuntimeEnv(source: NodeJS.ProcessEnv = process.env): BotRuntimeEnv {
-  const parsed = botRuntimeEnvSchema.parse(source);
-  return withDevGuildId(parsed);
+  return botRuntimeEnvSchema.parse(source);
 }
 
-function withDevGuildId<
-  T extends { DEV_GUILD_ID?: string | undefined; DISCORD_DEV_GUILD_ID?: string | undefined },
->(parsed: T): T & { DISCORD_DEV_GUILD_ID: string } {
-  const devGuildId = parsed.DISCORD_DEV_GUILD_ID ?? parsed.DEV_GUILD_ID;
+export function requireDiscordDevGuildId(parsed: Pick<BotEnv, "DISCORD_DEV_GUILD_ID">): string {
+  const devGuildId = parsed.DISCORD_DEV_GUILD_ID;
 
   if (!devGuildId) {
-    throw new Error("DISCORD_DEV_GUILD_ID or DEV_GUILD_ID is required");
+    throw new Error("DISCORD_DEV_GUILD_ID is required");
   }
 
+  return devGuildId;
+}
+
+function withDevGuildId<T extends BotEnv>(parsed: T): T & { DISCORD_DEV_GUILD_ID: string } {
   return {
     ...parsed,
-    DISCORD_DEV_GUILD_ID: devGuildId,
+    DISCORD_DEV_GUILD_ID: requireDiscordDevGuildId(parsed),
   };
 }

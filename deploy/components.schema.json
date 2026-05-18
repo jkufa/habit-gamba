@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "components": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "cronSchedule": {
+            "type": "string"
+          },
+          "healthcheckPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "package": {
+            "type": "string"
+          },
+          "preDeployCommand": {
+            "type": "string"
+          },
+          "public": {
+            "type": "boolean"
+          },
+          "requiredEnv": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "restartPolicy": {
+            "enum": ["ALWAYS", "NEVER", "ON_FAILURE"],
+            "type": "string"
+          },
+          "startCommand": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["scheduled", "web", "worker"],
+            "type": "string"
+          }
+        },
+        "required": ["name", "package", "public", "requiredEnv", "startCommand", "type"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "notes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": ["components"],
+  "type": "object"
+}

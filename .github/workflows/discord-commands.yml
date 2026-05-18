@@ -1,0 +1,77 @@
+name: Discord Commands
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/bot/src/commands.ts
+      - apps/bot/src/deploy-commands.ts
+      - packages/env/src/**
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Discord command deploy target
+        options:
+          - staging
+          - production
+        required: true
+        type: choice
+
+concurrency:
+  group: discord-commands-${{ github.event_name == 'push' && 'staging' || inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: github.event_name == 'push' || inputs.target == 'staging'
+    name: Deploy staging guild commands
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+      DISCORD_APPLICATION_ID: ${{ secrets.DISCORD_APPLICATION_ID }}
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      DISCORD_DEV_GUILD_ID: ${{ secrets.DISCORD_DEV_GUILD_ID }}
+      LOG_LEVEL: info
+      NODE_ENV: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Deploy staging guild commands
+        run: bun --filter @habit-gamba/bot deploy:commands
+
+  production:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
+    name: Deploy production global commands
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+      DISCORD_APPLICATION_ID: ${{ secrets.DISCORD_APPLICATION_ID }}
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      LOG_LEVEL: info
+      NODE_ENV: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.8
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Deploy production global commands
+        run: bun --filter @habit-gamba/bot deploy:commands -- --global

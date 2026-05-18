@@ -39,17 +39,6 @@ describe("loadBotEnv", () => {
     });
   });
 
-  it("accepts legacy DEV_GUILD_ID alias", () => {
-    expect(
-      loadBotEnv({
-        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
-        DEV_GUILD_ID: "guild",
-        DISCORD_APPLICATION_ID: "app",
-        DISCORD_BOT_TOKEN: "token",
-      }).DISCORD_DEV_GUILD_ID,
-    ).toBe("guild");
-  });
-
   it("requires API config for bot runtime", () => {
     expect(
       loadBotRuntimeEnv({
@@ -64,6 +53,23 @@ describe("loadBotEnv", () => {
       API_BASE_URL: "http://localhost:3000",
       BOT_API_TOKEN: "bot-token",
       DISCORD_DEV_GUILD_ID: "guild",
+    });
+  });
+
+  it("accepts production bot runtime without dev guild id", () => {
+    expect(
+      loadBotRuntimeEnv({
+        API_BASE_URL: "http://api-server.railway.internal:3000",
+        BOT_API_TOKEN: "bot-token",
+        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
+        DISCORD_APPLICATION_ID: "app",
+        DISCORD_BOT_TOKEN: "token",
+        NODE_ENV: "production",
+      }),
+    ).toMatchObject({
+      API_BASE_URL: "http://api-server.railway.internal:3000",
+      BOT_API_TOKEN: "bot-token",
+      DISCORD_APPLICATION_ID: "app",
     });
   });
 
@@ -87,6 +93,16 @@ describe("loadServerEnv", () => {
         DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
       }).BOT_API_TOKEN,
     ).toBe("bot-token");
+  });
+
+  it("uses Railway PORT when SERVER_PORT is not set", () => {
+    expect(
+      loadServerEnv({
+        BOT_API_TOKEN: "bot-token",
+        DATABASE_URL: "postgres://habit_gamba:habit_gamba@localhost:5432/habit_gamba",
+        PORT: "8080",
+      }).SERVER_PORT,
+    ).toBe(8080);
   });
 
   it("rejects missing bot API token", () => {

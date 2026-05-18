@@ -1,0 +1,48 @@
+{
+  "$schema": "./components.schema.json",
+  "components": [
+    {
+      "healthcheckPath": "/health/db",
+      "name": "api-server",
+      "package": "@habit-gamba/server",
+      "preDeployCommand": "bun --filter @habit-gamba/db db:migrate",
+      "public": true,
+      "requiredEnv": ["BOT_API_TOKEN", "DATABASE_URL", "LOG_LEVEL", "NODE_ENV", "PORT"],
+      "restartPolicy": "ON_FAILURE",
+      "startCommand": "bun --filter @habit-gamba/server start",
+      "type": "web"
+    },
+    {
+      "name": "discord-bot",
+      "package": "@habit-gamba/bot",
+      "public": false,
+      "requiredEnv": [
+        "API_BASE_URL",
+        "BOT_API_TOKEN",
+        "DATABASE_URL",
+        "DISCORD_APPLICATION_ID",
+        "DISCORD_BOT_TOKEN",
+        "LOG_LEVEL",
+        "NODE_ENV"
+      ],
+      "restartPolicy": "ON_FAILURE",
+      "startCommand": "bun --filter @habit-gamba/bot start",
+      "type": "worker"
+    },
+    {
+      "cronSchedule": "59 3 * * *",
+      "name": "market-lifecycle-worker",
+      "package": "@habit-gamba/market-lifecycle-worker",
+      "public": false,
+      "requiredEnv": ["DATABASE_URL", "LOG_LEVEL", "MARKET_LIFECYCLE_BATCH_LIMIT", "NODE_ENV"],
+      "restartPolicy": "NEVER",
+      "startCommand": "bun --filter @habit-gamba/market-lifecycle-worker start",
+      "type": "scheduled"
+    }
+  ],
+  "notes": {
+    "apiBaseUrl": "Set bot API_BASE_URL to http://${{api-server.RAILWAY_PRIVATE_DOMAIN}}:${{api-server.PORT}}.",
+    "cron": "Railway cron is UTC and minute-level. 59 3 * * * is the fixed UTC compromise for 23:59 New York during EDT.",
+    "image": "All services build from the root Dockerfile. Service behavior comes from Railway start command settings."
+  }
+}
