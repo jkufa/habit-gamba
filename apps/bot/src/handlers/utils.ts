@@ -1,6 +1,5 @@
 import {
   ActionRowBuilder,
-  EmbedBuilder,
   MessageFlags,
   ModalBuilder,
   TextInputBuilder,
@@ -13,9 +12,13 @@ import {
   type ThreadChannel,
 } from "discord.js";
 
-import { autocompleteMarkets, BotApiError, getDiscordUser, marketSummaryFields } from "../service";
+import { getDiscordMetadata, marketEmbed } from "@habit-gamba/discord";
+
+import { autocompleteMarkets, BotApiError, getDiscordUser } from "../service";
 import type { Actor } from "../permissions";
 import type { BotHandlerContext } from "./context";
+
+export { getDiscordMetadata, marketEmbed };
 
 export type RepliableBotInteraction =
   | ButtonInteraction
@@ -73,25 +76,6 @@ export async function ensureMarketThread(
   });
 
   return thread;
-}
-
-export function marketEmbed(
-  market: {
-    closesAt: Date | null;
-    description?: string | null;
-    id: string;
-    prices?: { no: number; yes: number };
-    slug: string;
-    status: string;
-    title: string;
-  },
-  title: string,
-) {
-  return new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(`**${market.title}**${market.description ? `\n${market.description}` : ""}`)
-    .addFields(...marketSummaryFields(market))
-    .setFooter({ text: `market ${market.id}` });
 }
 
 export function modal(customId: string, title: string, inputs: TextInputBuilder[]): ModalBuilder {
@@ -182,13 +166,6 @@ export function requireValue(value: string | null, label: string) {
   }
 
   return value.trim();
-}
-
-export function getDiscordMetadata(metadata: Record<string, unknown>) {
-  const discord = metadata.discord;
-  return discord && typeof discord === "object" && !Array.isArray(discord)
-    ? (discord as Record<string, unknown>)
-    : {};
 }
 
 export async function replyError(interaction: Interaction, error: unknown) {

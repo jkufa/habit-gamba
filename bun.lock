@@ -19,9 +19,22 @@
       "dependencies": {
         "@habit-gamba/api": "workspace:*",
         "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/discord": "workspace:*",
         "@habit-gamba/env": "workspace:*",
         "@habit-gamba/logger": "workspace:*",
         "discord.js": "^14.26.4",
+      },
+    },
+    "apps/event-worker": {
+      "name": "@habit-gamba/event-worker",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/discord": "workspace:*",
+        "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
+        "@habit-gamba/notification": "workspace:*",
+        "discord.js": "^14.26.4",
+        "drizzle-orm": "^0.45.1",
       },
     },
     "apps/market-lifecycle-worker": {
@@ -83,6 +96,12 @@
         "drizzle-kit": "^0.31.8",
       },
     },
+    "packages/discord": {
+      "name": "@habit-gamba/discord",
+      "dependencies": {
+        "discord.js": "^14.26.4",
+      },
+    },
     "packages/env": {
       "name": "@habit-gamba/env",
       "dependencies": {
@@ -103,6 +122,9 @@
     },
     "packages/notification": {
       "name": "@habit-gamba/notification",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+      },
     },
     "packages/qa": {
       "name": "@habit-gamba/qa",
@@ -231,7 +253,11 @@
 
     "@habit-gamba/db": ["@habit-gamba/db@workspace:packages/db"],
 
+    "@habit-gamba/discord": ["@habit-gamba/discord@workspace:packages/discord"],
+
     "@habit-gamba/env": ["@habit-gamba/env@workspace:packages/env"],
+
+    "@habit-gamba/event-worker": ["@habit-gamba/event-worker@workspace:apps/event-worker"],
 
     "@habit-gamba/exchange": ["@habit-gamba/exchange@workspace:packages/exchange"],
 

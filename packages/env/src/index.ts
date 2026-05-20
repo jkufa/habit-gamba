@@ -33,10 +33,16 @@ export const botRuntimeEnvSchema = botEnvSchema.extend({
   BOT_METRICS_PORT: z.coerce.number().int().positive().max(65_535).optional(),
   BOT_API_TOKEN: z.string().min(1),
 });
+export const eventWorkerEnvSchema = baseEnvSchema.extend({
+  DISCORD_BOT_TOKEN: z.string().min(1),
+  EVENT_WORKER_LOCK_TTL_MS: z.coerce.number().int().positive().default(60_000),
+  EVENT_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
+});
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
 export type BotEnv = z.infer<typeof botEnvSchema>;
 export type BotRuntimeEnv = z.infer<typeof botRuntimeEnvSchema>;
+export type EventWorkerEnv = z.infer<typeof eventWorkerEnvSchema>;
 export type ServerEnv = Omit<z.infer<typeof serverEnvSchema>, "SERVER_PORT"> & {
   SERVER_PORT: number;
 };
@@ -61,6 +67,10 @@ export function loadBotEnv(source: NodeJS.ProcessEnv = process.env): BotEnv {
 
 export function loadBotRuntimeEnv(source: NodeJS.ProcessEnv = process.env): BotRuntimeEnv {
   return botRuntimeEnvSchema.parse(source);
+}
+
+export function loadEventWorkerEnv(source: NodeJS.ProcessEnv = process.env): EventWorkerEnv {
+  return eventWorkerEnvSchema.parse(source);
 }
 
 export function requireDiscordDevGuildId(parsed: Pick<BotEnv, "DISCORD_DEV_GUILD_ID">): string {

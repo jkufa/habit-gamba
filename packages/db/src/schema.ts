@@ -30,6 +30,14 @@ export const ledgerReasonEnum = pgEnum("ledger_reason", [
 ]);
 export const resolutionKindEnum = pgEnum("resolution_kind", ["manual", "oracle"]);
 export const userStatusEnum = pgEnum("user_status", ["active", "deactivated"]);
+export const eventDeliveryStatusEnum = pgEnum("event_delivery_status", [
+  "pending",
+  "processing",
+  "failed",
+  "delivered",
+  "skipped",
+  "dead",
+]);
 
 function idColumn() {
   return text("id").primaryKey();
@@ -311,5 +319,34 @@ export const events = pgTable(
     index("events_type_idx").on(table.type),
     index("events_aggregate_idx").on(table.aggregateType, table.aggregateId),
     index("events_occurred_at_idx").on(table.occurredAt),
+  ],
+);
+
+export const eventDeliveries = pgTable(
+  "event_deliveries",
+  {
+    id: idColumn(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => events.id),
+    consumerName: text("consumer_name").notNull(),
+    status: eventDeliveryStatusEnum("status").notNull().default("pending"),
+    attempts: bigint("attempts", { mode: "number" }).notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
+  },
+  (table) => [
+    unique("event_deliveries_event_consumer_unique").on(table.eventId, table.consumerName),
+    index("event_deliveries_claim_idx").on(
+      table.consumerName,
+      table.status,
+      table.nextAttemptAt,
+      table.lockedUntil,
+    ),
+    index("event_deliveries_event_idx").on(table.eventId),
   ],
 );

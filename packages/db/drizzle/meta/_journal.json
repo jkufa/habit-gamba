@@ -43,6 +43,13 @@
       "when": 1779021200000,
       "tag": "0005_events_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779021300000,
+      "tag": "0006_event_deliveries",
+      "breakpoints": true
     }
   ]
 }

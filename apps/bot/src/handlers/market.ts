@@ -479,7 +479,6 @@ async function resolveMarketFromValues(
   await interaction.reply({
     embeds: [resolvedMarketEmbed(result.market, "Market resolved", outcome, values.proof)],
   });
-  await postResolutionToMarketThread(context, interaction, result.market, outcome, values.proof);
 }
 
 async function cancelMarketFromValues(
@@ -619,34 +618,6 @@ async function refreshMarketThread(
   await interaction.editReply({
     content: `Market refreshed. Posted ${trades.length} trade${trades.length === 1 ? "" : "s"}.`,
     embeds: [marketEmbed(market, "Market refreshed")],
-  });
-}
-
-async function postResolutionToMarketThread(
-  context: BotHandlerContext,
-  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
-  market: {
-    id: string;
-    metadata: Record<string, unknown>;
-    title: string;
-    closesAt: Date | null;
-    description?: string | null;
-    prices?: { no: number; yes: number };
-    slug: string;
-    status: string;
-  },
-  outcome: "NO" | "YES",
-  proof: Attachment | null,
-) {
-  const thread = await ensureAndPersistMarketThread(context, interaction, market);
-  await postOrUpdateMarketSummary(context, market, thread, {
-    proof,
-    title: "Market resolved",
-    outcome,
-  });
-  await thread?.send({
-    content: `Market resolved: ${outcome} won.${proof ? ` Proof: ${proof.url}` : ""}`,
-    embeds: [resolvedMarketEmbed(market, "Market resolved", outcome, proof)],
   });
 }
 

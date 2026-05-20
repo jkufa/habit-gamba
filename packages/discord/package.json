@@ -1,5 +1,5 @@
 {
-  "name": "@habit-gamba/notification",
+  "name": "@habit-gamba/discord",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -11,6 +11,6 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@habit-gamba/db": "workspace:*"
+    "discord.js": "^14.26.4"
   }
 }
