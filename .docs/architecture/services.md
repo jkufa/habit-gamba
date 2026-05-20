@@ -8,7 +8,7 @@ Domain packages own business rules; apps should validate/adapt requests and call
 
 ## Market Lifecycle Worker
 
-`apps/worker` owns the one-shot `market-lifecycle-worker` process. It is scheduled externally and exits after one batch.
+`apps/market-lifecycle-worker` owns scheduled market maintenance. It is scheduled externally and exits after one batch.
 
 Runtime config:
 
@@ -26,4 +26,26 @@ open -> void after closesAt if unresolved
 closed -> void until grace-period worker exists
 ```
 
-The worker uses a local JSON stdout logger adapter with fields aligned to the observability plan. Replace it with `packages/logger` when observability V1 lands. Future steps: split closed-market voiding into a grace worker, add event delivery state for multi-consumer processing, and build a bot/notification consumer for market outbox events.
+The worker uses `packages/logger` for wide structured events, metrics, and optional traces. Future steps: split closed-market voiding into a grace worker.
+
+## Event Delivery Worker
+
+`apps/event-worker` owns durable async side effects from committed domain events. It runs continuously, lazily materializes `event_deliveries` rows for supported event types, claims due rows with `FOR UPDATE SKIP LOCKED`, and records delivery state per consumer.
+
+V1 consumer:
+
+```text
+discord-market-notifications
+```
+
+V1 event flow:
+
+```text
+market.resolved / market.voided event
+  -> event_deliveries row
+  -> Discord notification intent from packages/notification
+  -> Discord REST delivery adapter
+  -> delivered, skipped, failed, or dead
+```
+
+Missing Discord thread metadata is marked `skipped` with `missing_discord_thread_id`; this is valid for API-only or non-Discord markets and should not be retried. Transient provider failures retry with short backoff and then move to `dead`.

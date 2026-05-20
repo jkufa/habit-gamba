@@ -35,15 +35,21 @@ Core system:
 Command/API request → domain package → database transaction → ledger/trade/position updates → notification
 ```
 
+Settlement notifications are asynchronous: domain packages write durable events inside the
+same transaction, then `apps/event-worker` delivers provider-specific notifications.
+
 ## Project Structure
 
 ```text
 .
 ├── apps/
 │   ├── bot/
-│   └── server/
+│   ├── event-worker/
+│   ├── market-lifecycle-worker/
+│   ├── server/
 └── packages/
     ├── db/
+    ├── discord/
     ├── env/
     ├── users/
     ├── contracts/
@@ -58,7 +64,15 @@ Command/API request → domain package → database transaction → ledger/trade
 
 ### `apps/bot`
 
-Provider-neutral bot worker for chat-command adapters.
+Discord command ingress: slash commands, buttons, modals, identity extraction, and immediate interaction replies.
+
+### `apps/event-worker`
+
+Continuous durable event delivery worker. V1 consumes market settlement events and delivers Discord notifications through a Discord REST adapter.
+
+### `apps/market-lifecycle-worker`
+
+One-shot scheduled market lifecycle maintenance.
 
 ### `apps/server`
 
@@ -66,7 +80,11 @@ Hono HTTP API layer.
 
 ### `packages/db`
 
-Drizzle schema, migrations, DB client, seed data, IDs, and currency constants.
+Drizzle schema, migrations, DB client, event outbox/delivery helpers, seed data, IDs, and currency constants.
+
+### `packages/discord`
+
+Shared Discord metadata parsing and market embed/message formatting.
 
 ### `packages/env`
 
@@ -94,7 +112,7 @@ Manual/oracle-ready resolution, cancellation, refunds, and payouts.
 
 ### `packages/notification`
 
-User-facing notification composition and delivery boundaries.
+Provider-neutral user-facing notification composition. Provider delivery stays in app adapters.
 
 ### `packages/qa`
 
