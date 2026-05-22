@@ -1,4 +1,5 @@
 import type {
+  AccountAdjustmentResponse,
   AccountResponse,
   ApiErrorResponse,
   ApiOk,
@@ -392,6 +393,130 @@ maybeDescribe("server API", () => {
 
     expect(closeResponse.status).toBe(200);
     expect(closeBody.status).toBe("closed");
+  });
+
+  it("lets app admins adjust registered user balances with idempotency", async () => {
+    const admin = await insertUser("account-admin");
+    const nonAdmin = await insertUser("account-non-admin");
+    const target = await insertUser("account-target");
+
+    await grantUserRole({ db: client.db, role: "admin", userId: admin.id });
+
+    const denied = await requestJson(`/accounts/${target.id}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(10n).toString(),
+        direction: "credit",
+        reason: "test denied",
+      },
+      headers: {
+        ...authHeaders(nonAdmin.provider, nonAdmin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:denied-adjustment`,
+      },
+      method: "POST",
+    });
+    const credit = await requestJson(`/accounts/${target.id}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(10n).toString(),
+        direction: "credit",
+        reason: "manual credit",
+      },
+      headers: {
+        ...authHeaders(admin.provider, admin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:admin-credit`,
+      },
+      method: "POST",
+    });
+    const duplicateCredit = await requestJson(`/accounts/${target.id}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(10n).toString(),
+        direction: "credit",
+        reason: "manual credit",
+      },
+      headers: {
+        ...authHeaders(admin.provider, admin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:admin-credit`,
+      },
+      method: "POST",
+    });
+    const conflictingCredit = await requestJson(`/accounts/${target.id}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(11n).toString(),
+        direction: "credit",
+        reason: "manual credit",
+      },
+      headers: {
+        ...authHeaders(admin.provider, admin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:admin-credit`,
+      },
+      method: "POST",
+    });
+    const debit = await requestJson(`/accounts/${target.id}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(3n).toString(),
+        direction: "debit",
+        reason: "manual debit",
+      },
+      headers: {
+        ...authHeaders(admin.provider, admin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:admin-debit`,
+      },
+      method: "POST",
+    });
+    const ledgerCountBeforeRejectedDebit = (
+      await client.db.select().from(schema.ledgerEntries)
+    ).filter((entry) => entry.userId === target.id).length;
+    const rejectedDebit = await requestJson(`/accounts/${target.id}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(100n).toString(),
+        direction: "debit",
+        reason: "too much",
+      },
+      headers: {
+        ...authHeaders(admin.provider, admin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:admin-debit-too-much`,
+      },
+      method: "POST",
+    });
+    const missingTarget = await requestJson(`/accounts/${createId()}/adjustments`, {
+      body: {
+        amountMicro: repToMicro(1n).toString(),
+        direction: "credit",
+        reason: "missing",
+      },
+      headers: {
+        ...authHeaders(admin.provider, admin.providerUserId),
+        "Idempotency-Key": `server-test:${target.id}:missing-target`,
+      },
+      method: "POST",
+    });
+    const creditBody = await jsonOk<AccountAdjustmentResponse>(credit);
+    const duplicateCreditBody = await jsonOk<AccountAdjustmentResponse>(duplicateCredit);
+    const debitBody = await jsonOk<AccountAdjustmentResponse>(debit);
+    const ledgerRows = (await client.db.select().from(schema.ledgerEntries)).filter(
+      (entry) => entry.userId === target.id,
+    );
+
+    expect(denied.status).toBe(403);
+    expect(credit.status).toBe(201);
+    expect(creditBody.balance.availableAmountMicro).toBe(repToMicro(10n).toString());
+    expect(creditBody.ledgerEntry.reason).toBe("adjustment");
+    expect(creditBody.ledgerEntry.metadata).toMatchObject({
+      actorUserId: admin.id,
+      direction: "credit",
+      reason: "manual credit",
+      source: "discord_admin_command",
+    });
+    expect(duplicateCredit.status).toBe(200);
+    expect(duplicateCreditBody.idempotent).toBe(true);
+    expect(duplicateCreditBody.ledgerEntry.id).toBe(creditBody.ledgerEntry.id);
+    expect(conflictingCredit.status).toBe(409);
+    expect(debit.status).toBe(201);
+    expect(debitBody.balance.availableAmountMicro).toBe(repToMicro(7n).toString());
+    expect(debitBody.ledgerEntry.reason).toBe("adjustment");
+    expect(debitBody.ledgerEntry.amountDeltaMicro).toBe((-repToMicro(3n)).toString());
+    expect(rejectedDebit.status).toBe(422);
+    expect(missingTarget.status).toBe(404);
+    expect(ledgerRows).toHaveLength(ledgerCountBeforeRejectedDebit);
   });
 
   it("resolves markets by Discord thread metadata for internal bot callers", async () => {

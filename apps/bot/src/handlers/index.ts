@@ -1,6 +1,7 @@
 import type { Interaction } from "discord.js";
 
 import { autocompleteMarkets, getDiscordUser } from "../service";
+import { handleAdmin } from "./admin";
 import { handleAccount } from "./account";
 import { handleLeaderboard } from "./leaderboard";
 import { handleMarket, handleMarketButton, handleMarketModal } from "./market";
@@ -54,6 +55,11 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
   }
 
   if (!interaction.isChatInputCommand()) {
+    return;
+  }
+
+  if (interaction.commandName === "admin") {
+    await handleAdmin(context, interaction);
     return;
   }
 

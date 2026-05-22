@@ -49,6 +49,15 @@ export const accountIdentitySchema = z.object({
   providerUserId: z.string().trim().min(1).max(280),
 });
 
+export const accountAdjustmentSchema = z.object({
+  amountMicro: z
+    .string()
+    .regex(/^[1-9]\d*$/u, "amountMicro must be a positive integer string")
+    .transform((value) => BigInt(value)),
+  direction: z.enum(["credit", "debit"]),
+  reason: z.string().trim().min(1).max(1_000),
+});
+
 export const marketMetadataPatchSchema = z.object({
   metadata: z.record(z.string(), z.unknown()),
 });

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { findMarketByDiscordThread, getLeaderboardCommand, resolveMarketCommand } from "../service";
+import {
+  adjustUserBalanceCommand,
+  findMarketByDiscordThread,
+  getLeaderboardCommand,
+  resolveMarketCommand,
+} from "../service";
 
 describe("bot API service", () => {
   afterEach(() => {
@@ -119,6 +124,81 @@ describe("bot API service", () => {
     expect(result.entries[0]?.user.displayName).toBe("Leaderboard User");
   });
 
+  it("sends admin balance adjustments with actor auth and idempotency", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            balance: {
+              availableAmountMicro: "1234000000",
+              creditLimitMicro: "0",
+              currency: "REP",
+              lockedAmountMicro: "0",
+              userId: "target-user",
+            },
+            idempotent: false,
+            ledgerEntry: {
+              amountDeltaMicro: "1234000000",
+              balanceAfterMicro: "1234000000",
+              createdAt: "2026-05-17T17:44:29.015Z",
+              currency: "REP",
+              id: "ledger-1",
+              idempotencyKey: "idem-1",
+              metadata: {},
+              reason: "adjustment",
+              sourceId: "source-1",
+              sourceType: "account_adjustment",
+              userId: "target-user",
+            },
+            user: userResponse("target-user", "discord-target", "Target User"),
+          },
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 201,
+        },
+      ),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await adjustUserBalanceCommand({
+      actor: {
+        discordUserId: "discord-admin",
+        userId: "admin-user",
+      },
+      amountMicro: 1234000000n,
+      apiBaseUrl: "https://api.example.test",
+      botApiToken: "bot-token",
+      direction: "credit",
+      reason: "manual fix",
+      targetUserId: "target-user",
+    });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+
+    expect(url).toEqual(new URL("/accounts/target-user/adjustments", "https://api.example.test"));
+    expect(init).toMatchObject({
+      body: JSON.stringify({
+        amountMicro: "1234000000",
+        direction: "credit",
+        reason: "manual fix",
+      }),
+      headers: {
+        Authorization: "Bearer bot-token",
+        "Content-Type": "application/json",
+        "X-Provider": "discord",
+        "X-Provider-User-Id": "discord-admin",
+      },
+      method: "POST",
+    });
+    expect((init as { headers: Record<string, string> }).headers["Idempotency-Key"]).toMatch(
+      /^discord:discord-admin:admin:credit:/u,
+    );
+    expect(result.balance.availableAmountMicro).toBe(1234000000n);
+    expect(result.ledgerEntry.amountDeltaMicro).toBe(1234000000n);
+    expect(result.user.id).toBe("target-user");
+  });
+
   it("finds markets by Discord thread and treats 404 as no default", async () => {
     const fetchMock = vi
       .fn()
@@ -175,15 +255,19 @@ describe("bot API service", () => {
   });
 });
 
-function userResponse() {
+function userResponse(
+  id = "user-1",
+  providerUserId = "discord-1",
+  displayName = "Leaderboard User",
+) {
   return {
     createdAt: "2026-05-17T17:44:29.015Z",
-    displayName: "Leaderboard User",
+    displayName,
     handle: "leaderboard-user",
-    id: "user-1",
+    id,
     metadata: {},
     provider: "discord",
-    providerUserId: "discord-1",
+    providerUserId,
     status: "active",
     updatedAt: "2026-05-17T17:44:29.015Z",
   };

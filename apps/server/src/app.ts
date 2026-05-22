@@ -1,5 +1,6 @@
 import { closeMarket, createBinaryMarket, getMarketById, openMarket } from "@habit-gamba/contracts";
 import type {
+  AccountAdjustmentResponse,
   AutocompleteMarketsResponse,
   CancelMarketResponse,
   LeaderboardResponse,
@@ -11,7 +12,8 @@ import type { DbClient } from "@habit-gamba/db";
 import { createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { cancelMarket, previewCancelMarket, resolveMarket } from "@habit-gamba/resolution";
-import { ensureSeedRepGrant, hasUserPermission, upsertUser } from "@habit-gamba/users";
+import { ensureSeedRepGrant, getUserById, hasUserPermission, upsertUser } from "@habit-gamba/users";
+import { creditRep, penalizeRep } from "@habit-gamba/wallet";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { and, asc, desc, eq, gt, ilike, ne, or, sql } from "drizzle-orm";
@@ -23,6 +25,7 @@ import { serverObservabilityMiddleware, type ServerObservability } from "./obser
 import { getLeaderboard, getPortfolio } from "./reads";
 import {
   accountIdentitySchema,
+  accountAdjustmentSchema,
   createMarketSchema,
   limitSchema,
   marketMetadataPatchSchema,
@@ -113,6 +116,64 @@ export function createApp(input: {
     const user = await requireUser(context, input.db);
 
     return context.json(ok(await getPortfolio({ db: input.db, userId: user.id })));
+  });
+
+  app.post("/accounts/:userId/adjustments", async (context) => {
+    const actor = await requireUser(context, input.db);
+    await requireAccountAdjuster(input.db, actor.id);
+
+    const idempotencyKey = context.req.header("Idempotency-Key")?.trim();
+
+    if (!idempotencyKey) {
+      throw new ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header is required");
+    }
+
+    const targetUserId = context.req.param("userId");
+    const targetUser = await getUserById({ db: input.db, userId: targetUserId });
+
+    if (!targetUser || targetUser.status !== "active") {
+      throw new ApiError(404, "USER_NOT_FOUND", "Target user was not found", {
+        userId: targetUserId,
+      });
+    }
+
+    const body = accountAdjustmentSchema.parse(await context.req.json());
+    const sourceId = `account-adjustment:${idempotencyKey}`;
+    const metadata = {
+      actorUserId: actor.id,
+      direction: body.direction,
+      reason: body.reason,
+      source: "discord_admin_command",
+    };
+    const result =
+      body.direction === "credit"
+        ? await creditRep({
+            amountMicro: body.amountMicro,
+            db: input.db,
+            idempotencyKey,
+            metadata,
+            sourceId,
+            sourceType: "account_adjustment",
+            userId: targetUser.id,
+          })
+        : await penalizeRep({
+            amountMicro: body.amountMicro,
+            db: input.db,
+            idempotencyKey,
+            metadata,
+            sourceId,
+            sourceType: "account_adjustment",
+            userId: targetUser.id,
+          });
+
+    const response = {
+      balance: result.balance,
+      idempotent: result.idempotent,
+      ledgerEntry: result.ledgerEntry,
+      user: targetUser,
+    } satisfies AccountAdjustmentResponse;
+
+    return context.json(ok(response), result.idempotent ? 200 : 201);
   });
 
   app.get("/accounts/me/positions", async (context) => {
@@ -492,6 +553,18 @@ async function requireMarketManager(db: DbClient, marketId: string, userId: stri
   }
 
   return market;
+}
+
+async function requireAccountAdjuster(db: DbClient, userId: string) {
+  const canAdjustAccounts = await hasUserPermission({
+    db,
+    permission: "account.adjust",
+    userId,
+  });
+
+  if (!canAdjustAccounts) {
+    throw new ApiError(403, "FORBIDDEN", "Only an admin may adjust account balances");
+  }
 }
 
 async function autocompleteMarkets(input: {

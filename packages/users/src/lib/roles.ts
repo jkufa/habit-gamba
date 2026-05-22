@@ -11,6 +11,7 @@ import type {
 } from "./types";
 
 const ROLE_PERMISSIONS = {
+  admin: ["account.adjust", "market.manage"],
   market_admin: ["market.manage"],
 } as const satisfies Record<UserRoleName, readonly UserPermission[]>;
 
@@ -51,9 +52,9 @@ export async function hasUserPermission(input: HasUserPermissionInput): Promise<
 }
 
 export function roleHasPermission(role: UserRoleName | null, permission: UserPermission): boolean {
-  return role ? ROLE_PERMISSIONS[role].includes(permission) : false;
+  return role ? ROLE_PERMISSIONS[role].some((candidate) => candidate === permission) : false;
 }
 
 function asUserRoleName(value: string): UserRoleName | null {
-  return value === "market_admin" ? value : null;
+  return value === "admin" || value === "market_admin" ? value : null;
 }

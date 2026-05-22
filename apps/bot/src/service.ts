@@ -1,4 +1,5 @@
 import type {
+  AccountAdjustmentResponse,
   AccountResponse,
   ApiErrorResponse,
   ApiOk,
@@ -118,6 +119,19 @@ export type BotLeaderboardEntry = {
   user: BotUser;
 };
 
+export type BotAccountAdjustmentResult = {
+  balance: BotBalance;
+  idempotent: boolean;
+  ledgerEntry: Omit<
+    Serialized<AccountAdjustmentResponse>["ledgerEntry"],
+    "amountDeltaMicro" | "balanceAfterMicro"
+  > & {
+    amountDeltaMicro: bigint;
+    balanceAfterMicro: bigint;
+  };
+  user: BotUser;
+};
+
 export type BotBuyResult = Omit<Serialized<BuyMarketResponse>, "market" | "position" | "quote"> & {
   market: BotMarket;
   position: BotPosition;
@@ -190,6 +204,33 @@ export async function getAccount(input: BotServices & { actor: Actor }) {
     balance: parseBalance(result.balance),
     user: parseUser(result.user),
   };
+}
+
+export async function adjustUserBalanceCommand(
+  input: BotServices & {
+    actor: Actor;
+    amountMicro: bigint;
+    direction: "credit" | "debit";
+    reason: string;
+    targetUserId: string;
+  },
+): Promise<BotAccountAdjustmentResult> {
+  const result = await request<AccountAdjustmentResponse>(
+    input,
+    `/accounts/${input.targetUserId}/adjustments`,
+    {
+      actor: input.actor,
+      body: {
+        amountMicro: input.amountMicro.toString(),
+        direction: input.direction,
+        reason: input.reason,
+      },
+      idempotencyKey: `discord:${input.actor.discordUserId}:admin:${input.direction}:${crypto.randomUUID()}`,
+      method: "POST",
+    },
+  );
+
+  return parseAccountAdjustmentResult(result);
 }
 
 export async function createMarketCommand(
@@ -666,6 +707,21 @@ function parseLeaderboardEntry(
   return {
     balance: parseBalance(value.balance),
     rank: value.rank,
+    user: parseUser(value.user),
+  };
+}
+
+function parseAccountAdjustmentResult(
+  value: Serialized<AccountAdjustmentResponse>,
+): BotAccountAdjustmentResult {
+  return {
+    balance: parseBalance(value.balance),
+    idempotent: value.idempotent,
+    ledgerEntry: {
+      ...value.ledgerEntry,
+      amountDeltaMicro: BigInt(value.ledgerEntry.amountDeltaMicro),
+      balanceAfterMicro: BigInt(value.ledgerEntry.balanceAfterMicro),
+    },
     user: parseUser(value.user),
   };
 }

@@ -1,6 +1,6 @@
 import type { schema } from "@habit-gamba/db";
 import type { EnsureSeedRepGrantResult, User } from "@habit-gamba/users";
-import type { RepBalance } from "@habit-gamba/wallet";
+import type { RepBalance, WalletWriteResult } from "@habit-gamba/wallet";
 
 export type RegisterAccountResponse = {
   balance: EnsureSeedRepGrantResult["balance"];
@@ -11,6 +11,13 @@ export type RegisterAccountResponse = {
 export type AccountResponse = {
   balance: RepBalance;
   positions: PortfolioPositionView[];
+  user: User;
+};
+
+export type AccountAdjustmentResponse = {
+  balance: RepBalance;
+  idempotent: boolean;
+  ledgerEntry: WalletWriteResult["ledgerEntry"];
   user: User;
 };
 

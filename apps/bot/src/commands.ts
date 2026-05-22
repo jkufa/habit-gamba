@@ -6,6 +6,11 @@ import {
 
 export const commandData = [
   new SlashCommandBuilder()
+    .setName("admin")
+    .setDescription("Admin account tools")
+    .addSubcommand(adminCreditCommand)
+    .addSubcommand(adminDebitCommand),
+  new SlashCommandBuilder()
     .setName("account")
     .setDescription("Manage your Habit Gamba account")
     .addSubcommand((command) =>
@@ -40,6 +45,33 @@ export const commandData = [
     .addSubcommand(resolveMarketCommand)
     .addSubcommand(cancelMarketCommand),
 ].map((command) => command.toJSON());
+
+function adminCreditCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
+  return adminAdjustmentCommand(command, "credit", "Credit REP to a registered user");
+}
+
+function adminDebitCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
+  return adminAdjustmentCommand(command, "debit", "Debit REP from a registered user");
+}
+
+function adminAdjustmentCommand(
+  command: SlashCommandSubcommandBuilder,
+  name: "credit" | "debit",
+  description: string,
+): SlashCommandSubcommandBuilder {
+  return command
+    .setName(name)
+    .setDescription(description)
+    .addUserOption((option) =>
+      option.setName("user").setDescription("Registered Discord user").setRequired(true),
+    )
+    .addStringOption((option) =>
+      option.setName("amount").setDescription("REP amount, up to 2 decimals").setRequired(true),
+    )
+    .addStringOption((option) =>
+      option.setName("reason").setDescription("Audit reason").setRequired(true),
+    );
+}
 
 function createMarketCommand(
   command: SlashCommandSubcommandBuilder,
