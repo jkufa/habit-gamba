@@ -136,7 +136,7 @@ function refreshMarketCommand(
     .setName("refresh")
     .setDescription("Refresh market thread from API trades")
     .addStringOption((option) =>
-      option.setName("market").setDescription("Market").setAutocomplete(true).setRequired(true),
+      option.setName("market").setDescription("Market").setAutocomplete(true).setRequired(false),
     );
 }
 

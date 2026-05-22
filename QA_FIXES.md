@@ -80,9 +80,9 @@ Root cause:
 Fix:
 
 - Remove `closes_at` from `/market create`; creation should draft only.
-- For `/market open`, accept `mm.dd.yyyy` only.
+- For `/market open`, accept `MM/DD/YYYY` only.
 - Parse close date as America/New_York at `23:59:59`.
-- Update copy to `Close date (MM.DD.YYYY)`.
+- Update copy to `Close date (MM/DD/YYYY)`.
 - Optional later: add preset buttons like `Tomorrow`, `This Sunday`, `In 7 days`.
 
 ### 6. Creator can buy own market

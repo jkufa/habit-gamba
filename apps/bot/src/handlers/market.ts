@@ -31,6 +31,7 @@ import {
 import {
   ensureMarketThread,
   field,
+  formatTodayEasternDate,
   getDiscordMetadata,
   marketEmbed,
   modal,
@@ -40,6 +41,7 @@ import {
   requireActor,
   requiredField,
   requireValue,
+  resolveDefaultMarketValue,
   resolveMarketId,
   textInput,
 } from "./utils";
@@ -138,45 +140,68 @@ export async function handleMarketModal(
   ) {
     const marketId = interaction.customId.startsWith("market-open:")
       ? requireValue(interaction.customId.split(":")[1] ?? null, "market")
-      : requiredField(interaction, "market");
+      : requireValue(
+          await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+          "market",
+        );
     await openMarketFromValues(context, interaction, {
       closesAt: requiredField(interaction, "closes_at"),
       market: marketId,
     });
   } else if (interaction.customId === "market-view") {
+    const marketValue = requireValue(
+      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+      "market",
+    );
     const market = await viewMarketCommand({
       ...context.services,
-      marketId: await resolveMarketId(context, requiredField(interaction, "market")),
+      marketId: await resolveMarketId(context, marketValue),
     });
     await interaction.reply({
       embeds: [marketEmbed(market, "Market")],
       flags: MessageFlags.Ephemeral,
     });
   } else if (interaction.customId === "market-buy") {
+    const market = requireValue(
+      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+      "market",
+    );
     await buyMarketFromValues(context, interaction, {
       amount: requiredField(interaction, "amount"),
-      market: requiredField(interaction, "market"),
+      market,
       mode: requiredField(interaction, "mode"),
       outcome: requiredField(interaction, "outcome"),
     });
   } else if (interaction.customId === "market-close") {
+    const marketValue = requireValue(
+      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+      "market",
+    );
     const actor = await requireActor(context, interaction);
     const market = await closeMarketCommand({
       ...context.services,
       actor,
-      marketId: await resolveMarketId(context, requiredField(interaction, "market")),
+      marketId: await resolveMarketId(context, marketValue),
     });
     await interaction.reply({ embeds: [marketEmbed(market, "Market closed")] });
   } else if (interaction.customId === "market-resolve") {
+    const market = requireValue(
+      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+      "market",
+    );
     await resolveMarketFromValues(context, interaction, {
-      market: requiredField(interaction, "market"),
+      market,
       note: field(interaction, "note"),
       outcome: requiredField(interaction, "outcome"),
       proof: null,
     });
   } else if (interaction.customId === "market-cancel") {
+    const market = requireValue(
+      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+      "market",
+    );
     await cancelMarketFromValues(context, interaction, {
-      market: requiredField(interaction, "market"),
+      market,
       reason: requiredField(interaction, "reason"),
     });
   }
@@ -210,7 +235,11 @@ async function handleMarketOpen(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const marketId = interaction.options.getString("market");
+  const marketId = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
   const closesAt = interaction.options.getString("closes_at");
 
   if (!marketId || !closesAt) {
@@ -222,7 +251,7 @@ async function handleMarketOpen(
           "Close date (MM/DD/YYYY)",
           TextInputStyle.Short,
           true,
-          closesAt ?? "",
+          closesAt ?? formatTodayEasternDate(),
         ),
       ]),
     );
@@ -236,7 +265,11 @@ async function handleMarketView(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const marketId = interaction.options.getString("market");
+  const marketId = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
 
   if (!marketId) {
     await interaction.showModal(
@@ -261,7 +294,11 @@ async function handleMarketBuy(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const market = interaction.options.getString("market");
+  const market = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
   const outcome = interaction.options.getString("outcome");
   const mode = interaction.options.getString("mode");
   const spendRep = interaction.options.getString("spend_rep");
@@ -293,7 +330,11 @@ async function handleMarketClose(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const marketId = interaction.options.getString("market");
+  const marketId = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
 
   if (!marketId) {
     await interaction.showModal(
@@ -317,7 +358,10 @@ async function handleMarketRefresh(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const marketId = requireValue(interaction.options.getString("market"), "market");
+  const marketId = requireValue(
+    await resolveDefaultMarketValue(context, interaction, interaction.options.getString("market")),
+    "market",
+  );
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   await refreshMarketThread(context, interaction, marketId);
 }
@@ -326,7 +370,11 @@ async function handleMarketResolve(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const marketId = interaction.options.getString("market");
+  const marketId = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
   const outcome = interaction.options.getString("outcome");
   const proof = interaction.options.getAttachment("proof");
   const note = interaction.options.getString("note");
@@ -349,7 +397,11 @@ async function handleMarketCancel(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
 ) {
-  const marketId = interaction.options.getString("market");
+  const marketId = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
   const reason = interaction.options.getString("reason");
 
   if (!marketId || !reason) {
@@ -698,7 +750,13 @@ function resolvedMarketEmbed(
 
 function openMarketDateModal(marketId: string) {
   return modal(`market-open:${marketId}`, "Open market", [
-    textInput("closes_at", "Close date (MM/DD/YYYY)", TextInputStyle.Short, true),
+    textInput(
+      "closes_at",
+      "Close date (MM/DD/YYYY)",
+      TextInputStyle.Short,
+      true,
+      formatTodayEasternDate(),
+    ),
   ]);
 }
 

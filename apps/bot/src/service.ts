@@ -258,6 +258,26 @@ export async function viewMarketCommand(
   return parseMarket(result);
 }
 
+export async function findMarketByDiscordThread(
+  input: BotServices & { threadId: string },
+): Promise<BotMarket | null> {
+  const threadId = encodeURIComponent(input.threadId);
+
+  try {
+    const result = await request<MarketResponse>(input, `/markets/by-discord-thread/${threadId}`, {
+      method: "GET",
+    });
+
+    return parseMarket(result);
+  } catch (error) {
+    if (error instanceof BotApiError && error.status === 404 && error.code === "MARKET_NOT_FOUND") {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
 export async function buyMarketCommand(
   input: BotServices & {
     actor: Actor;

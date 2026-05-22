@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getLeaderboardCommand, resolveMarketCommand } from "../service";
+import { findMarketByDiscordThread, getLeaderboardCommand, resolveMarketCommand } from "../service";
 
 describe("bot API service", () => {
   afterEach(() => {
@@ -117,6 +117,61 @@ describe("bot API service", () => {
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]?.balance.availableAmountMicro).toBe(1234000000n);
     expect(result.entries[0]?.user.displayName).toBe("Leaderboard User");
+  });
+
+  it("finds markets by Discord thread and treats 404 as no default", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: marketResponse(),
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "MARKET_NOT_FOUND",
+              message: "Market not found",
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 404,
+          },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const services = {
+      apiBaseUrl: "https://api.example.test",
+      botApiToken: "bot-token",
+    };
+    const found = await findMarketByDiscordThread({ ...services, threadId: "thread-1" });
+    const missing = await findMarketByDiscordThread({ ...services, threadId: "missing-thread" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("/markets/by-discord-thread/thread-1", "https://api.example.test"),
+      {
+        body: undefined,
+        headers: {
+          Authorization: "Bearer bot-token",
+          "Content-Type": "application/json",
+        },
+        method: "GET",
+      },
+    );
+    expect(found?.id).toBe("market-1");
+    expect(found?.closesAt).toBeInstanceOf(Date);
+    expect(found?.contracts[0]?.shareSupplyMicro).toBe(0n);
+    expect(missing).toBeNull();
   });
 });
 

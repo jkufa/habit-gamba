@@ -1,12 +1,90 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BotApiError } from "../service";
-import { parseCloseDate, userFacingErrorMessage } from "../handlers/utils";
+import {
+  formatTodayEasternDate,
+  parseCloseDate,
+  resolveDefaultMarketValue,
+  userFacingErrorMessage,
+} from "../handlers/utils";
 
 describe("bot market utilities", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("parses close dates as 11:59:59pm America/New_York", () => {
     expect(parseCloseDate("05/24/2026").toISOString()).toBe("2026-05-25T03:59:59.000Z");
     expect(parseCloseDate("12/24/2026").toISOString()).toBe("2026-12-25T04:59:59.000Z");
+  });
+
+  it("formats today using America/New_York", () => {
+    expect(formatTodayEasternDate(new Date("2026-05-22T03:59:00.000Z"))).toBe("05/21/2026");
+    expect(formatTodayEasternDate(new Date("2026-05-22T04:00:00.000Z"))).toBe("05/22/2026");
+  });
+
+  it("resolves missing market values from linked thread context", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: marketResponse(),
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "MARKET_NOT_FOUND",
+              message: "Market not found",
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 404,
+          },
+        ),
+      );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const context = {
+      services: {
+        apiBaseUrl: "https://api.example.test",
+        botApiToken: "bot-token",
+      },
+    };
+    const threadInteraction = {
+      channel: {
+        id: "thread-1",
+        isThread: () => true,
+      },
+    };
+    const channelInteraction = {
+      channel: {
+        id: "channel-1",
+        isThread: () => false,
+      },
+    };
+
+    await expect(
+      resolveDefaultMarketValue(context as never, threadInteraction as never, " explicit "),
+    ).resolves.toBe("explicit");
+    await expect(
+      resolveDefaultMarketValue(context as never, channelInteraction as never, null),
+    ).resolves.toBeNull();
+    await expect(
+      resolveDefaultMarketValue(context as never, threadInteraction as never, null),
+    ).resolves.toBe("market-1");
+    await expect(
+      resolveDefaultMarketValue(context as never, threadInteraction as never, null),
+    ).resolves.toBeNull();
   });
 
   it("rejects non MM/DD/YYYY close dates", () => {
@@ -41,4 +119,48 @@ function messageForStatus(status: string) {
       status,
     }),
   );
+}
+
+function marketResponse() {
+  return {
+    closedAt: null,
+    closesAt: "2026-05-20T03:59:59.000Z",
+    contracts: [
+      {
+        createdAt: "2026-05-17T17:44:29.015Z",
+        id: "contract-yes",
+        marketId: "market-1",
+        outcome: "YES",
+        shareSupplyMicro: "0",
+        title: "YES",
+        updatedAt: "2026-05-17T17:44:29.015Z",
+      },
+      {
+        createdAt: "2026-05-17T17:44:29.015Z",
+        id: "contract-no",
+        marketId: "market-1",
+        outcome: "NO",
+        shareSupplyMicro: "0",
+        title: "NO",
+        updatedAt: "2026-05-17T17:44:29.015Z",
+      },
+    ],
+    createdAt: "2026-05-17T17:44:29.015Z",
+    creatorUserId: "user-1",
+    currency: "REP",
+    description: "Will mark when in melee today",
+    id: "market-1",
+    liquidityParameterMicro: "0",
+    metadata: {},
+    openedAt: "2026-05-17T17:44:48.282Z",
+    oracleAdapter: null,
+    oracleRef: null,
+    prices: { no: 0.5, yes: 0.5 },
+    resolvedAt: null,
+    slug: "market-fh2zeq",
+    status: "open",
+    title: "'",
+    updatedAt: "2026-05-17T17:44:58.000Z",
+    voidedAt: null,
+  };
 }

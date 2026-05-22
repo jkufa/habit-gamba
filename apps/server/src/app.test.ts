@@ -394,6 +394,62 @@ maybeDescribe("server API", () => {
     expect(closeBody.status).toBe("closed");
   });
 
+  it("resolves markets by Discord thread metadata for internal bot callers", async () => {
+    const lines: string[] = [];
+    const observedApp = createApp({
+      botApiToken: "server-test-bot-token",
+      db: client.db,
+      observability: createServerObservability({
+        env: "test",
+        logger: createLogger({
+          env: "test",
+          service: "server",
+          write: (line) => lines.push(line),
+        }),
+      }),
+    });
+    const creator = await insertUser("discord-thread-owner");
+    const missing = await app.request("/markets/by-discord-thread/missing-thread", {
+      headers: botHeaders(),
+    });
+    const unauthorized = await app.request("/markets/by-discord-thread/missing-thread");
+    const first = await createMarket(creator.provider, creator.providerUserId, {
+      discord: { threadId: "thread-duplicate" },
+      source: "server-test",
+    });
+    const linked = await createMarket(creator.provider, creator.providerUserId, {
+      discord: { threadId: "thread-linked" },
+      source: "server-test",
+    });
+    const duplicate = await createMarket(creator.provider, creator.providerUserId, {
+      discord: { threadId: "thread-duplicate" },
+      source: "server-test",
+    });
+    const linkedResponse = await app.request("/markets/by-discord-thread/thread-linked", {
+      headers: botHeaders(),
+    });
+    const duplicateResponse = await observedApp.request(
+      "/markets/by-discord-thread/thread-duplicate",
+      {
+        headers: botHeaders(),
+      },
+    );
+    const linkedBody = await jsonOk<MarketResponse>(linkedResponse);
+    const duplicateBody = await jsonOk<MarketResponse>(duplicateResponse);
+
+    expect(unauthorized.status).toBe(401);
+    expect(missing.status).toBe(404);
+    expect(linkedResponse.status).toBe(200);
+    expect(linkedBody.id).toBe(linked.id);
+    expect(linkedBody.contracts).toHaveLength(2);
+    expect(duplicateResponse.status).toBe(200);
+    expect(duplicateBody.id).toBe(duplicate.id);
+    expect(duplicateBody.id).not.toBe(first.id);
+    expect(lines.some((line) => line.includes("duplicate_discord_thread_market_metadata"))).toBe(
+      true,
+    );
+  });
+
   it("returns public portfolio and leaderboard reads", async () => {
     const user = await insertUser("portfolio");
 
@@ -419,12 +475,14 @@ maybeDescribe("server API", () => {
     expect(typeof leaderboardBody.entries[0]?.balance.availableAmountMicro).toBe("string");
   });
 
-  async function createMarket(provider: string, providerUserId: string) {
+  async function createMarket(
+    provider: string,
+    providerUserId: string,
+    metadata: Record<string, unknown> = { source: "server-test" },
+  ) {
     const response = await requestJson("/markets", {
       body: {
-        metadata: {
-          source: "server-test",
-        },
+        metadata,
         slug: `server-test-${createId().toLowerCase()}`,
         title: "Will the API work?",
       },

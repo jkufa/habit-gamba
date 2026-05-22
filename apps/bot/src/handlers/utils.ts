@@ -14,7 +14,12 @@ import {
 
 import { getDiscordMetadata, marketEmbed } from "@habit-gamba/discord";
 
-import { autocompleteMarkets, BotApiError, getDiscordUser } from "../service";
+import {
+  autocompleteMarkets,
+  BotApiError,
+  findMarketByDiscordThread,
+  getDiscordUser,
+} from "../service";
 import type { Actor } from "../permissions";
 import type { BotHandlerContext } from "./context";
 
@@ -49,6 +54,29 @@ export async function resolveMarketId(context: BotHandlerContext, value: string)
   const exact = matches.find((market) => market.id === value || market.slug === value);
 
   return (exact ?? matches[0])?.id ?? value;
+}
+
+export async function resolveDefaultMarketValue(
+  context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+  explicitValue?: string | null,
+): Promise<string | null> {
+  const trimmed = explicitValue?.trim();
+
+  if (trimmed) {
+    return trimmed;
+  }
+
+  if (!interaction.channel?.isThread()) {
+    return null;
+  }
+
+  const market = await findMarketByDiscordThread({
+    ...context.services,
+    threadId: interaction.channel.id,
+  });
+
+  return market?.id ?? null;
 }
 
 export async function ensureMarketThread(
@@ -140,6 +168,18 @@ export function parseCloseDate(value: string) {
   }
 
   return zonedTimeToUtc(year, month, day, 23, 59, 59, "America/New_York");
+}
+
+export function formatTodayEasternDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/New_York",
+    year: "numeric",
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return `${values.month}/${values.day}/${values.year}`;
 }
 
 export function parseMode(value: string) {

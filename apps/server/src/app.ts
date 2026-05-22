@@ -139,6 +139,44 @@ export function createApp(input: {
     return context.json(ok(response));
   });
 
+  app.get("/markets/by-discord-thread/:threadId", async (context) => {
+    requireInternalBot(context, input.botApiToken);
+
+    // TODO: Move provider-specific lookups into an integration/provider API when bot APIs split.
+    const threadId = context.req.param("threadId");
+    const rows = await input.db
+      .select({ id: schema.markets.id })
+      .from(schema.markets)
+      .where(sql`${schema.markets.metadata}->'discord'->>'threadId' = ${threadId}`)
+      .orderBy(
+        desc(schema.markets.updatedAt),
+        desc(schema.markets.createdAt),
+        desc(schema.markets.id),
+      )
+      .limit(2);
+    const match = rows[0];
+
+    if (!match) {
+      throw new ApiError(404, "MARKET_NOT_FOUND", "Market not found", { threadId });
+    }
+
+    if (rows.length > 1) {
+      input.observability?.logger.error("duplicate_discord_thread_market_metadata", {
+        market_ids: rows.map((row) => row.id),
+        thread_id: threadId,
+      });
+    }
+
+    return context.json(
+      ok(
+        await exchange.getMarket({
+          db: input.db,
+          marketId: match.id,
+        }),
+      ),
+    );
+  });
+
   app.post("/markets", async (context) => {
     const user = await requireUser(context, input.db);
     const body = createMarketSchema.parse(await context.req.json());
