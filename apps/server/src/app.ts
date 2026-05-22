@@ -12,7 +12,13 @@ import type { DbClient } from "@habit-gamba/db";
 import { createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { cancelMarket, previewCancelMarket, resolveMarket } from "@habit-gamba/resolution";
-import { ensureSeedRepGrant, getUserById, hasUserPermission, upsertUser } from "@habit-gamba/users";
+import {
+  ensureSeedRepGrant,
+  getUserById,
+  grantUserRole,
+  hasUserPermission,
+  upsertUser,
+} from "@habit-gamba/users";
 import { creditRep, penalizeRep } from "@habit-gamba/wallet";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -106,6 +112,10 @@ export function createApp(input: {
       sourceId: `${identity.provider}:${identity.providerUserId}:starter-rep`,
       userId: user.id,
     });
+
+    if (identity.admin) {
+      await grantUserRole({ db: input.db, role: "admin", userId: user.id });
+    }
 
     const response = { balance: grant.balance, grant, user } satisfies RegisterAccountResponse;
 

@@ -31,6 +31,7 @@ const INCREMENTAL_REFRESH_TRADE_LIMIT = 25;
 export type DiscordIdentity = {
   displayName: string;
   handle?: string | null;
+  isAdmin?: boolean;
   userId: string;
 };
 
@@ -179,6 +180,7 @@ export async function getDiscordUser(input: BotServices & { discordUserId: strin
 export async function registerAccount(input: BotServices & { identity: DiscordIdentity }) {
   const result = await request<RegisterAccountResponse>(input, "/accounts/register", {
     body: {
+      ...(input.identity.isAdmin === undefined ? {} : { admin: input.identity.isAdmin }),
       displayName: input.identity.displayName,
       handle: input.identity.handle ?? null,
       provider: DISCORD_PROVIDER,

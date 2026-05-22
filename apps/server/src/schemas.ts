@@ -43,6 +43,7 @@ export const limitSchema = z
   .optional();
 
 export const accountIdentitySchema = z.object({
+  admin: z.boolean().optional(),
   displayName: z.string().trim().min(1).max(280),
   handle: z.string().trim().min(1).max(280).nullable().optional(),
   provider: z.string().trim().min(1).max(80),

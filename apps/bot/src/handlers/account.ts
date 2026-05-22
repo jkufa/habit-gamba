@@ -1,4 +1,4 @@
-import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 
 import { formatMicro } from "../money";
 import { getAccount, getDiscordUser, registerAccount, type DiscordIdentity } from "../service";
@@ -18,13 +18,18 @@ export async function handleAccount(
     });
 
     if (existingUser) {
-      const account = await getAccount({
-        ...context.services,
-        actor: {
-          discordUserId: interaction.user.id,
-          userId: existingUser.id,
-        },
-      });
+      const account = isDiscordAdmin(interaction)
+        ? await registerAccount({
+            ...context.services,
+            identity: getIdentity(interaction),
+          })
+        : await getAccount({
+            ...context.services,
+            actor: {
+              discordUserId: interaction.user.id,
+              userId: existingUser.id,
+            },
+          });
       await interaction.reply({
         content: `You're already registered. Balance: ${formatMicro(account.balance.availableAmountMicro)}`,
         flags: MessageFlags.Ephemeral,
@@ -58,6 +63,11 @@ function getIdentity(interaction: ChatInputCommandInteraction): DiscordIdentity 
         ? interaction.member.displayName
         : (interaction.user.globalName ?? interaction.user.username),
     handle: interaction.user.username,
+    isAdmin: isDiscordAdmin(interaction),
     userId: interaction.user.id,
   };
+}
+
+function isDiscordAdmin(interaction: ChatInputCommandInteraction) {
+  return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
 }

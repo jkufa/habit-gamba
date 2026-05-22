@@ -16,7 +16,7 @@ import type {
 } from "@habit-gamba/api";
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
 import { createLogger } from "@habit-gamba/logger";
-import { grantUserRole } from "@habit-gamba/users";
+import { grantUserRole, hasUserPermission } from "@habit-gamba/users";
 import { creditRep } from "@habit-gamba/wallet";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -125,6 +125,7 @@ maybeDescribe("server API", () => {
     });
     const providerUserId = `discord-${createId()}`;
     const handle = `discord-user-${createId().toLowerCase()}`;
+    const adminProviderUserId = `discord-admin-${createId()}`;
     const registered = await requestJson("/accounts/register", {
       body: {
         displayName: "Discord User",
@@ -135,15 +136,37 @@ maybeDescribe("server API", () => {
       headers: botHeaders(),
       method: "POST",
     });
+    const registeredAdmin = await requestJson("/accounts/register", {
+      body: {
+        admin: true,
+        displayName: "Discord Admin",
+        provider: "discord",
+        providerUserId: adminProviderUserId,
+      },
+      headers: botHeaders(),
+      method: "POST",
+    });
     const account = await app.request("/accounts/me", {
       headers: authHeaders("discord", providerUserId),
     });
+    const adminAccount = await app.request("/accounts/me", {
+      headers: authHeaders("discord", adminProviderUserId),
+    });
     const accountBody = await jsonOk<AccountResponse>(account);
+    const adminAccountBody = await jsonOk<AccountResponse>(adminAccount);
 
     expect(missingToken.status).toBe(401);
     expect(registered.status).toBe(201);
+    expect(registeredAdmin.status).toBe(201);
     expect(account.status).toBe(200);
     expect(accountBody.balance.availableAmountMicro).toBe(repToMicro(1_000n).toString());
+    expect(
+      await hasUserPermission({
+        db: client.db,
+        permission: "account.adjust",
+        userId: adminAccountBody.user.id,
+      }),
+    ).toBe(true);
   });
 
   it("creates draft markets, opens them by creator, reads without auth, and serializes bigints", async () => {
