@@ -90,6 +90,11 @@ function findMaxSharesForBudget(
   let low = 0n;
   let high = amountMicro + 1n;
 
+  while (costDeltaCeil(marketState, applyShares(marketState, outcome, high)) <= amountMicro) {
+    low = high;
+    high *= 2n;
+  }
+
   while (low + 1n < high) {
     const mid = (low + high) / 2n;
     const costMicro = costDeltaCeil(marketState, applyShares(marketState, outcome, mid));
@@ -123,25 +128,39 @@ function applyShares(
 }
 
 function costDeltaCeil(before: LmsrMarketState, after: LmsrMarketState): bigint {
-  const delta = costFunctionMicro(after) - costFunctionMicro(before);
+  const delta = costDeltaMicro(before, after);
   const rounded = Math.ceil(delta - 1e-9);
 
-  if (!Number.isSafeInteger(rounded) || rounded < 0) {
+  if (!Number.isSafeInteger(rounded) || rounded < 0 || delta < 0) {
     throw new RangeError("LMSR quote cost is outside safe integer bounds");
   }
 
-  return BigInt(rounded);
+  return BigInt(rounded === 0 && delta > 0 ? 1 : rounded);
 }
 
-function costFunctionMicro(marketState: LmsrMarketState): number {
+function costDeltaMicro(before: LmsrMarketState, after: LmsrMarketState): number {
+  const beforeCost = scaledCostParts(before);
+  const afterCost = scaledCostParts(after);
+
+  return (
+    Number(before.liquidityParameterMicro) *
+    (afterCost.max - beforeCost.max + afterCost.logRemainder - beforeCost.logRemainder)
+  );
+}
+
+function scaledCostParts(marketState: LmsrMarketState): {
+  logRemainder: number;
+  max: number;
+} {
   assertValidState(marketState);
 
   const b = Number(marketState.liquidityParameterMicro);
   const yes = Number(marketState.yesSharesMicro) / b;
   const no = Number(marketState.noSharesMicro) / b;
   const max = Math.max(yes, no);
+  const min = Math.min(yes, no);
 
-  return b * (max + Math.log(Math.exp(yes - max) + Math.exp(no - max)));
+  return { logRemainder: Math.log1p(Math.exp(min - max)), max };
 }
 
 function assertValidState(marketState: LmsrMarketState) {

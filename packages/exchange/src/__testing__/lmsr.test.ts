@@ -57,6 +57,21 @@ describe("LMSR engine", () => {
     expect(quote.sharesMicro).toBeGreaterThan(0n);
   });
 
+  it("spends safely when buying the cheap side of an imbalanced market", () => {
+    const budgetMicro = repToMicro(1_000n);
+    const imbalancedState: LmsrMarketState = {
+      liquidityParameterMicro: repToMicro(100n),
+      noSharesMicro: 0n,
+      yesSharesMicro: repToMicro(5_000n),
+    };
+    const quote = quoteBuy(imbalancedState, "NO", budgetMicro);
+
+    expect(quote.costMicro).toBeGreaterThan(0n);
+    expect(quote.costMicro).toBeLessThanOrEqual(budgetMicro);
+    expect(quote.sharesMicro).toBeGreaterThan(budgetMicro);
+    expect(quote.pricesAfter.no).toBeGreaterThan(quote.pricesBefore.no);
+  });
+
   it("quotes exact target shares", () => {
     const sharesMicro = repToMicro(3n);
     const quote = quoteBuyShares(initialState, "YES", sharesMicro);
@@ -64,5 +79,16 @@ describe("LMSR engine", () => {
     expect(quote.sharesMicro).toBe(sharesMicro);
     expect(quote.costMicro).toBeGreaterThan(0n);
     expect(quote.pricesAfter.yes).toBeGreaterThan(quote.pricesBefore.yes);
+  });
+
+  it("charges at least one micro for tiny positive target-share costs", () => {
+    const imbalancedState: LmsrMarketState = {
+      liquidityParameterMicro: repToMicro(100n),
+      noSharesMicro: 0n,
+      yesSharesMicro: repToMicro(5_000n),
+    };
+    const quote = quoteBuyShares(imbalancedState, "NO", repToMicro(1_000n));
+
+    expect(quote.costMicro).toBeGreaterThan(0n);
   });
 });
