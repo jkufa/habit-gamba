@@ -1,5 +1,10 @@
 export type LogLevel = "debug" | "error" | "info" | "warn";
-export type ServiceName = "bot" | "event-worker" | "market-lifecycle-worker" | "server";
+export type ServiceName =
+  | "bot"
+  | "event-worker"
+  | "market-lifecycle-worker"
+  | "market-reminder-worker"
+  | "server";
 export type LogFields = Record<string, unknown>;
 
 export type Logger = {

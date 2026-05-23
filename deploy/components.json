@@ -29,6 +29,25 @@
       "type": "worker"
     },
     {
+      "name": "event-worker",
+      "package": "@habit-gamba/event-worker",
+      "public": false,
+      "requiredEnv": ["DATABASE_URL", "DISCORD_BOT_TOKEN", "LOG_LEVEL", "NODE_ENV"],
+      "restartPolicy": "ON_FAILURE",
+      "startCommand": "bun --filter @habit-gamba/event-worker start",
+      "type": "worker"
+    },
+    {
+      "cronSchedule": "*/5 * * * *",
+      "name": "market-reminder-worker",
+      "package": "@habit-gamba/market-reminder-worker",
+      "public": false,
+      "requiredEnv": ["DATABASE_URL", "DISCORD_BOT_TOKEN", "LOG_LEVEL", "NODE_ENV"],
+      "restartPolicy": "NEVER",
+      "startCommand": "bun --filter @habit-gamba/market-reminder-worker start",
+      "type": "scheduled"
+    },
+    {
       "cronSchedule": "59 3 * * *",
       "name": "market-lifecycle-worker",
       "package": "@habit-gamba/market-lifecycle-worker",
@@ -41,7 +60,7 @@
   ],
   "notes": {
     "apiBaseUrl": "Set bot API_BASE_URL to http://${{api-server.RAILWAY_PRIVATE_DOMAIN}}:${{api-server.PORT}}.",
-    "cron": "Railway cron is UTC and minute-level. 59 3 * * * is the fixed UTC compromise for 23:59 New York during EDT.",
+    "cron": "Railway cron is UTC and minute-level. 59 3 * * * is the fixed UTC compromise for 23:59 New York during EDT. Reminder worker runs every 5 minutes and checks per-row UTC due times.",
     "image": "All services build from the root Dockerfile. Service behavior comes from Railway start command settings."
   }
 }

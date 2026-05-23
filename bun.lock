@@ -48,6 +48,18 @@
         "drizzle-orm": "^0.45.1",
       },
     },
+    "apps/market-reminder-worker": {
+      "name": "@habit-gamba/market-reminder-worker",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/discord": "workspace:*",
+        "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
+        "@habit-gamba/reminders": "workspace:*",
+        "discord.js": "^14.26.4",
+        "drizzle-orm": "^0.45.1",
+      },
+    },
     "apps/server": {
       "name": "@habit-gamba/server",
       "dependencies": {
@@ -57,6 +69,7 @@
         "@habit-gamba/env": "workspace:*",
         "@habit-gamba/exchange": "workspace:*",
         "@habit-gamba/logger": "workspace:*",
+        "@habit-gamba/reminders": "workspace:*",
         "@habit-gamba/resolution": "workspace:*",
         "@habit-gamba/users": "workspace:*",
         "@habit-gamba/wallet": "workspace:*",
@@ -141,6 +154,14 @@
         "@habit-gamba/wallet": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "postgres": "^3.4.7",
+      },
+    },
+    "packages/reminders": {
+      "name": "@habit-gamba/reminders",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/discord": "workspace:*",
+        "drizzle-orm": "^0.45.1",
       },
     },
     "packages/resolution": {
@@ -265,9 +286,13 @@
 
     "@habit-gamba/market-lifecycle-worker": ["@habit-gamba/market-lifecycle-worker@workspace:apps/market-lifecycle-worker"],
 
+    "@habit-gamba/market-reminder-worker": ["@habit-gamba/market-reminder-worker@workspace:apps/market-reminder-worker"],
+
     "@habit-gamba/notification": ["@habit-gamba/notification@workspace:packages/notification"],
 
     "@habit-gamba/qa": ["@habit-gamba/qa@workspace:packages/qa"],
+
+    "@habit-gamba/reminders": ["@habit-gamba/reminders@workspace:packages/reminders"],
 
     "@habit-gamba/resolution": ["@habit-gamba/resolution@workspace:packages/resolution"],
 

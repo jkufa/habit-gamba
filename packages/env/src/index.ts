@@ -38,11 +38,17 @@ export const eventWorkerEnvSchema = baseEnvSchema.extend({
   EVENT_WORKER_LOCK_TTL_MS: z.coerce.number().int().positive().default(60_000),
   EVENT_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
 });
+export const marketReminderWorkerEnvSchema = baseEnvSchema.extend({
+  DISCORD_BOT_TOKEN: z.string().min(1),
+  MARKET_REMINDER_BATCH_LIMIT: z.coerce.number().int().positive().optional(),
+  MARKET_REMINDER_LOCK_TTL_MS: z.coerce.number().int().positive().default(60_000),
+});
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;
 export type BotEnv = z.infer<typeof botEnvSchema>;
 export type BotRuntimeEnv = z.infer<typeof botRuntimeEnvSchema>;
 export type EventWorkerEnv = z.infer<typeof eventWorkerEnvSchema>;
+export type MarketReminderWorkerEnv = z.infer<typeof marketReminderWorkerEnvSchema>;
 export type ServerEnv = Omit<z.infer<typeof serverEnvSchema>, "SERVER_PORT"> & {
   SERVER_PORT: number;
 };
@@ -71,6 +77,12 @@ export function loadBotRuntimeEnv(source: NodeJS.ProcessEnv = process.env): BotR
 
 export function loadEventWorkerEnv(source: NodeJS.ProcessEnv = process.env): EventWorkerEnv {
   return eventWorkerEnvSchema.parse(source);
+}
+
+export function loadMarketReminderWorkerEnv(
+  source: NodeJS.ProcessEnv = process.env,
+): MarketReminderWorkerEnv {
+  return marketReminderWorkerEnvSchema.parse(source);
 }
 
 export function requireDiscordDevGuildId(parsed: Pick<BotEnv, "DISCORD_DEV_GUILD_ID">): string {

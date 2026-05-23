@@ -18,6 +18,7 @@ import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
 import { createLogger } from "@habit-gamba/logger";
 import { grantUserRole, hasUserPermission } from "@habit-gamba/users";
 import { creditRep } from "@habit-gamba/wallet";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -598,6 +599,75 @@ maybeDescribe("server API", () => {
     );
   });
 
+  it("schedules EOD reminder deliveries when Discord thread metadata is patched", async () => {
+    const creator = await insertUser("reminder-owner", "discord");
+    const openMarket = await createMarket(creator.provider, creator.providerUserId);
+    const closedMarket = await createMarket(creator.provider, creator.providerUserId);
+
+    await requestJson(`/markets/${openMarket.id}/open`, {
+      body: {
+        closesAt: "2099-01-01T04:59:59.000Z",
+      },
+      headers: authHeaders(creator.provider, creator.providerUserId),
+      method: "POST",
+    });
+    await requestJson(`/markets/${closedMarket.id}/open`, {
+      body: {
+        closesAt: "2099-01-01T04:59:59.000Z",
+      },
+      headers: authHeaders(creator.provider, creator.providerUserId),
+      method: "POST",
+    });
+    await requestJson(`/markets/${closedMarket.id}/close`, {
+      body: {},
+      headers: authHeaders(creator.provider, creator.providerUserId),
+      method: "POST",
+    });
+
+    const firstPatch = await requestJson(`/markets/${openMarket.id}/metadata`, {
+      body: {
+        metadata: {
+          discord: { threadId: `thread-${openMarket.id}` },
+        },
+      },
+      headers: botHeaders(),
+      method: "PATCH",
+    });
+    const duplicatePatch = await requestJson(`/markets/${openMarket.id}/metadata`, {
+      body: {
+        metadata: {
+          discord: { threadId: `thread-${openMarket.id}` },
+        },
+      },
+      headers: botHeaders(),
+      method: "PATCH",
+    });
+    const closedPatch = await requestJson(`/markets/${closedMarket.id}/metadata`, {
+      body: {
+        metadata: {
+          discord: { threadId: `thread-${closedMarket.id}` },
+        },
+      },
+      headers: botHeaders(),
+      method: "PATCH",
+    });
+    const rows = await client.db
+      .select()
+      .from(schema.marketReminderDeliveries)
+      .where(eq(schema.marketReminderDeliveries.marketId, openMarket.id));
+    const closedRows = await client.db
+      .select()
+      .from(schema.marketReminderDeliveries)
+      .where(eq(schema.marketReminderDeliveries.marketId, closedMarket.id));
+
+    expect(firstPatch.status).toBe(200);
+    expect(duplicatePatch.status).toBe(200);
+    expect(closedPatch.status).toBe(200);
+    expect(rows.map((row) => row.slotKey).sort()).toEqual(["eod_18_et", "eod_22_et"]);
+    expect(new Set(rows.map((row) => row.recipientUserId))).toEqual(new Set([creator.id]));
+    expect(closedRows).toHaveLength(0);
+  });
+
   it("returns public portfolio and leaderboard reads", async () => {
     const user = await insertUser("portfolio");
 
@@ -644,9 +714,8 @@ maybeDescribe("server API", () => {
     return body.market;
   }
 
-  async function insertUser(label: string) {
+  async function insertUser(label: string, provider = "server-test") {
     const id = createId();
-    const provider = "server-test";
     const providerUserId = `${label}-${id}`;
 
     const [user] = await client.db
@@ -671,7 +740,7 @@ maybeDescribe("server API", () => {
     input: {
       body: unknown;
       headers?: Record<string, string>;
-      method: "POST";
+      method: "PATCH" | "POST";
     },
   ) {
     return app.request(path, {

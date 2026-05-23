@@ -1,27 +1,20 @@
 {
-  "name": "@habit-gamba/server",
+  "name": "@habit-gamba/market-reminder-worker",
   "type": "module",
   "scripts": {
     "build": "bun run check-types",
     "check-types": "tsc --noEmit",
-    "dev": "bun --env-file=../../.env --watch src/index.ts",
     "lint": "oxlint .",
     "start": "bun --env-file=../../.env src/index.ts",
     "test": "bun --env-file=../../.env vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@habit-gamba/api": "workspace:*",
-    "@habit-gamba/contracts": "workspace:*",
     "@habit-gamba/db": "workspace:*",
+    "@habit-gamba/discord": "workspace:*",
     "@habit-gamba/env": "workspace:*",
-    "@habit-gamba/exchange": "workspace:*",
     "@habit-gamba/logger": "workspace:*",
     "@habit-gamba/reminders": "workspace:*",
-    "@habit-gamba/resolution": "workspace:*",
-    "@habit-gamba/users": "workspace:*",
-    "@habit-gamba/wallet": "workspace:*",
-    "drizzle-orm": "^0.45.1",
-    "hono": "^4.10.7",
-    "zod": "^4.1.13"
+    "discord.js": "^14.26.4",
+    "drizzle-orm": "^0.45.1"
   }
 }

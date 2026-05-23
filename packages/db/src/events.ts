@@ -63,6 +63,7 @@ function toServiceName(value: string | undefined): ServiceName {
     value === "bot" ||
     value === "event-worker" ||
     value === "market-lifecycle-worker" ||
+    value === "market-reminder-worker" ||
     value === "server"
   ) {
     return value;

@@ -11,6 +11,7 @@ import type {
 import type { DbClient } from "@habit-gamba/db";
 import { createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
+import { scheduleMarketReminderDeliveries } from "@habit-gamba/reminders";
 import { cancelMarket, previewCancelMarket, resolveMarket } from "@habit-gamba/resolution";
 import {
   ensureSeedRepGrant,
@@ -454,18 +455,27 @@ export function createApp(input: {
 
     const market = await requireMarket(input.db, context.req.param("id"));
     const body = marketMetadataPatchSchema.parse(await context.req.json());
-    const [updated] = await input.db
-      .update(schema.markets)
-      .set({
-        metadata: mergeRecords(market.metadata, body.metadata),
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.markets.id, market.id))
-      .returning();
+    const updated = await input.db.transaction(async (tx) => {
+      const [updatedMarket] = await tx
+        .update(schema.markets)
+        .set({
+          metadata: mergeRecords(market.metadata, body.metadata),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.markets.id, market.id))
+        .returning();
 
-    if (!updated) {
-      throw new Error("Failed to update market metadata");
-    }
+      if (!updatedMarket) {
+        throw new Error("Failed to update market metadata");
+      }
+
+      await scheduleMarketReminderDeliveries({
+        db: tx,
+        market: updatedMarket,
+      });
+
+      return updatedMarket;
+    });
 
     return context.json(ok(updated));
   });

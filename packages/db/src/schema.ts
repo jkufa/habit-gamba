@@ -38,6 +38,14 @@ export const eventDeliveryStatusEnum = pgEnum("event_delivery_status", [
   "skipped",
   "dead",
 ]);
+export const marketReminderDeliveryStatusEnum = pgEnum("market_reminder_delivery_status", [
+  "pending",
+  "processing",
+  "failed",
+  "delivered",
+  "skipped",
+  "dead",
+]);
 
 function idColumn() {
   return text("id").primaryKey();
@@ -348,5 +356,44 @@ export const eventDeliveries = pgTable(
       table.lockedUntil,
     ),
     index("event_deliveries_event_idx").on(table.eventId),
+  ],
+);
+
+export const marketReminderDeliveries = pgTable(
+  "market_reminder_deliveries",
+  {
+    id: idColumn(),
+    marketId: text("market_id")
+      .notNull()
+      .references(() => markets.id),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => users.id),
+    slotKey: text("slot_key").notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    status: marketReminderDeliveryStatusEnum("status").notNull().default("pending"),
+    attempts: bigint("attempts", { mode: "number" }).notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    discordMessageId: text("discord_message_id"),
+    lastError: text("last_error"),
+    metadata: metadataColumn(),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
+  },
+  (table) => [
+    unique("market_reminder_deliveries_market_recipient_slot_unique").on(
+      table.marketId,
+      table.recipientUserId,
+      table.slotKey,
+    ),
+    index("market_reminder_deliveries_claim_idx").on(
+      table.status,
+      table.nextAttemptAt,
+      table.lockedUntil,
+    ),
+    index("market_reminder_deliveries_market_idx").on(table.marketId),
+    index("market_reminder_deliveries_recipient_idx").on(table.recipientUserId),
   ],
 );
