@@ -56,6 +56,16 @@
       "restartPolicy": "NEVER",
       "startCommand": "bun --filter @habit-gamba/market-lifecycle-worker start",
       "type": "scheduled"
+    },
+    {
+      "cronSchedule": "*/5 * * * *",
+      "name": "recurring-market-worker",
+      "package": "@habit-gamba/recurring-market-worker",
+      "public": false,
+      "requiredEnv": ["DATABASE_URL", "LOG_LEVEL", "NODE_ENV", "RECURRING_MARKET_BATCH_LIMIT"],
+      "restartPolicy": "NEVER",
+      "startCommand": "bun --filter @habit-gamba/recurring-market-worker start",
+      "type": "scheduled"
     }
   ],
   "notes": {

@@ -14,6 +14,7 @@
     "@habit-gamba/contracts": "workspace:*",
     "@habit-gamba/db": "workspace:*",
     "@habit-gamba/exchange": "workspace:*",
+    "@habit-gamba/recurring": "workspace:*",
     "@habit-gamba/resolution": "workspace:*",
     "@habit-gamba/users": "workspace:*",
     "@habit-gamba/wallet": "workspace:*"

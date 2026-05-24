@@ -16,6 +16,7 @@
     "@habit-gamba/env": "workspace:*",
     "@habit-gamba/exchange": "workspace:*",
     "@habit-gamba/logger": "workspace:*",
+    "@habit-gamba/recurring": "workspace:*",
     "@habit-gamba/reminders": "workspace:*",
     "@habit-gamba/resolution": "workspace:*",
     "@habit-gamba/users": "workspace:*",

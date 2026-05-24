@@ -1,6 +1,7 @@
 import {
   ApplicationCommandOptionType,
   SlashCommandBuilder,
+  SlashCommandSubcommandGroupBuilder,
   SlashCommandSubcommandBuilder,
 } from "discord.js";
 
@@ -43,7 +44,8 @@ export const commandData = [
     .addSubcommand(closeMarketCommand)
     .addSubcommand(refreshMarketCommand)
     .addSubcommand(resolveMarketCommand)
-    .addSubcommand(cancelMarketCommand),
+    .addSubcommand(cancelMarketCommand)
+    .addSubcommandGroup(recurringMarketCommandGroup),
 ].map((command) => command.toJSON());
 
 function adminCreditCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
@@ -203,6 +205,41 @@ function cancelMarketCommand(
       option.setName("market").setDescription("Market").setAutocomplete(true),
     )
     .addStringOption((option) => option.setName("reason").setDescription("Cancellation reason"));
+}
+
+function recurringMarketCommandGroup(
+  group: SlashCommandSubcommandGroupBuilder,
+): SlashCommandSubcommandGroupBuilder {
+  return group
+    .setName("recurring")
+    .setDescription("Schedule or end recurring markets")
+    .addSubcommand((command) =>
+      command
+        .setName("schedule")
+        .setDescription("Schedule a draft market as recurring")
+        .addStringOption((option) =>
+          option.setName("market").setDescription("Draft market").setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((command) =>
+      command
+        .setName("end")
+        .setDescription("End future markets in a recurring series")
+        .addStringOption((option) =>
+          option.setName("market").setDescription("Market in series").setAutocomplete(true),
+        )
+        .addStringOption((option) =>
+          option.setName("reason").setDescription("Reason for ending recurrence"),
+        ),
+    )
+    .addSubcommand((command) =>
+      command
+        .setName("manage")
+        .setDescription("Manage recurring markets")
+        .addStringOption((option) =>
+          option.setName("market").setDescription("Market in series").setAutocomplete(true),
+        ),
+    );
 }
 
 export function getAutocompleteOption(

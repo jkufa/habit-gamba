@@ -3,6 +3,7 @@ import {
   bigint,
   check,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -45,6 +46,10 @@ export const marketReminderDeliveryStatusEnum = pgEnum("market_reminder_delivery
   "delivered",
   "skipped",
   "dead",
+]);
+export const recurringMarketSeriesStatusEnum = pgEnum("recurring_market_series_status", [
+  "active",
+  "ended",
 ]);
 
 function idColumn() {
@@ -156,6 +161,8 @@ export const markets = pgTable(
     voidedAt: timestamp("voided_at", { withTimezone: true }),
     oracleAdapter: text("oracle_adapter"),
     oracleRef: text("oracle_ref"),
+    recurringSeriesId: text("recurring_series_id"),
+    recurrenceDate: text("recurrence_date"),
     metadata: metadataColumn(),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
@@ -163,8 +170,45 @@ export const markets = pgTable(
   (table) => [
     unique("markets_slug_unique").on(table.slug),
     index("markets_creator_idx").on(table.creatorUserId),
+    index("markets_recurring_series_idx").on(table.recurringSeriesId),
     index("markets_status_idx").on(table.status),
+    unique("markets_recurring_series_date_unique").on(
+      table.recurringSeriesId,
+      table.recurrenceDate,
+    ),
     check("markets_liquidity_nonnegative", sql`${table.liquidityParameterMicro} >= 0`),
+  ],
+);
+
+export const recurringMarketSeries = pgTable(
+  "recurring_market_series",
+  {
+    id: idColumn(),
+    creatorUserId: text("creator_user_id")
+      .notNull()
+      .references(() => users.id),
+    sourceMarketId: text("source_market_id")
+      .notNull()
+      .references(() => markets.id),
+    title: text("title").notNull(),
+    description: text("description"),
+    daysOfWeekMask: integer("days_of_week_mask").notNull(),
+    endsOn: text("ends_on"),
+    status: recurringMarketSeriesStatusEnum("status").notNull().default("active"),
+    nextOpenAt: timestamp("next_open_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    endReason: text("end_reason"),
+    metadata: metadataColumn(),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
+  },
+  (table) => [
+    index("recurring_market_series_creator_idx").on(table.creatorUserId),
+    index("recurring_market_series_due_idx").on(table.status, table.nextOpenAt),
+    check(
+      "recurring_market_series_days_mask_valid",
+      sql`${table.daysOfWeekMask} >= 1 and ${table.daysOfWeekMask} <= 127`,
+    ),
   ],
 );
 

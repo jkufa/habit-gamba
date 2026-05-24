@@ -1,6 +1,10 @@
 import type { Event } from "@habit-gamba/db";
 
-export const MARKET_NOTIFICATION_EVENT_TYPES = ["market.resolved", "market.voided"] as const;
+export const MARKET_NOTIFICATION_EVENT_TYPES = [
+  "market.opened",
+  "market.resolved",
+  "market.voided",
+] as const;
 
 export type MarketNotificationEventType = (typeof MARKET_NOTIFICATION_EVENT_TYPES)[number];
 export type MarketNotificationMarket = {
@@ -13,6 +17,13 @@ export type MarketNotificationMarket = {
   title: string;
 };
 export type MarketNotificationIntent =
+  | {
+      content: string;
+      eventType: "market.opened";
+      kind: "market_opened";
+      market: MarketNotificationMarket;
+      summaryTitle: "Market opened";
+    }
   | {
       content: string;
       eventType: "market.resolved";
@@ -36,6 +47,16 @@ export function composeMarketNotification(input: {
 }): MarketNotificationIntent | null {
   if (!input.market) {
     return null;
+  }
+
+  if (input.event.type === "market.opened") {
+    return {
+      content: `Market opened: ${input.market.title}`,
+      eventType: "market.opened",
+      kind: "market_opened",
+      market: input.market,
+      summaryTitle: "Market opened",
+    };
   }
 
   if (input.event.type === "market.resolved") {

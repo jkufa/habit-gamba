@@ -12,6 +12,7 @@ import type { DbClient } from "@habit-gamba/db";
 import { createId, repToMicro, schema } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { scheduleMarketReminderDeliveries } from "@habit-gamba/reminders";
+import { createRecurringMarketSeries, endRecurringMarketSeries } from "@habit-gamba/recurring";
 import { cancelMarket, previewCancelMarket, resolveMarket } from "@habit-gamba/resolution";
 import {
   ensureSeedRepGrant,
@@ -33,6 +34,8 @@ import { getLeaderboard, getPortfolio } from "./reads";
 import {
   accountIdentitySchema,
   accountAdjustmentSchema,
+  createRecurringMarketSeriesSchema,
+  endRecurringMarketSeriesSchema,
   createMarketSchema,
   limitSchema,
   marketMetadataPatchSchema,
@@ -282,6 +285,44 @@ export function createApp(input: {
       closesAt: body.closesAt,
       db: input.db,
       marketId: market.id,
+    });
+
+    return context.json(ok(result));
+  });
+
+  app.post("/markets/:id/recurring-series", async (context) => {
+    const user = await requireUser(context, input.db);
+    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const body = createRecurringMarketSeriesSchema.parse(await context.req.json());
+    const result = await createRecurringMarketSeries({
+      creatorUserId: market.creatorUserId,
+      daysOfWeekMask: body.daysOfWeekMask,
+      db: input.db,
+      endsOn: body.endsOn ?? null,
+      marketId: market.id,
+      metadata: body.metadata ?? {},
+    });
+
+    return context.json(
+      ok({
+        ...result,
+        firstMarket: result.firstMarket
+          ? await exchange.getMarket({ db: input.db, marketId: result.firstMarket.id })
+          : null,
+      }),
+      201,
+    );
+  });
+
+  app.post("/recurring-market-series/:id/end", async (context) => {
+    const user = await requireUser(context, input.db);
+    const series = await requireRecurringSeriesManager(input.db, context.req.param("id"), user.id);
+    const body = endRecurringMarketSeriesSchema.parse(await context.req.json());
+    const result = await endRecurringMarketSeries({
+      db: input.db,
+      endedByUserId: user.id,
+      reason: body.reason ?? null,
+      seriesId: series.id,
     });
 
     return context.json(ok(result));
@@ -575,6 +616,32 @@ async function requireMarketManager(db: DbClient, marketId: string, userId: stri
   return market;
 }
 
+async function requireRecurringSeriesManager(db: DbClient, seriesId: string, userId: string) {
+  const [series] = await db
+    .select()
+    .from(schema.recurringMarketSeries)
+    .where(eq(schema.recurringMarketSeries.id, seriesId))
+    .limit(1);
+
+  if (!series) {
+    throw new ApiError(404, "RECURRING_SERIES_NOT_FOUND", "Recurring market series not found", {
+      seriesId,
+    });
+  }
+
+  const canManageMarkets = await hasUserPermission({
+    db,
+    permission: "market.manage",
+    userId,
+  });
+
+  if (series.creatorUserId !== userId && !canManageMarkets) {
+    throw new ApiError(403, "FORBIDDEN", "Only the series creator or a market admin may do this");
+  }
+
+  return series;
+}
+
 async function requireAccountAdjuster(db: DbClient, userId: string) {
   const canAdjustAccounts = await hasUserPermission({
     db,
@@ -634,8 +701,11 @@ function isManagedAutocomplete(subcommand: string | undefined) {
     subcommand === "open" ||
     subcommand === "close" ||
     subcommand === "refresh" ||
+    subcommand === "schedule" ||
     subcommand === "resolve" ||
-    subcommand === "cancel"
+    subcommand === "cancel" ||
+    subcommand === "end" ||
+    subcommand === "manage"
   );
 }
 

@@ -7,7 +7,9 @@ import type {
   BuyMarketResponse,
   CancelMarketResponse,
   CloseMarketResponse,
+  CreateRecurringMarketSeriesResponse,
   CreateMarketResponse,
+  EndRecurringMarketSeriesResponse,
   LeaderboardResponse,
   MarketMetadataResponse,
   MarketResponse,
@@ -88,9 +90,31 @@ export type BotMarket = {
   id: string;
   metadata: Record<string, unknown>;
   prices?: { no: number; yes: number };
+  recurrenceDate: string | null;
+  recurringSeriesId: string | null;
   slug: string;
   status: string;
   title: string;
+};
+
+export type BotRecurringMarketSeries = {
+  creatorUserId: string;
+  daysOfWeekMask: number;
+  description: string | null;
+  endedAt: Date | null;
+  endReason: string | null;
+  endsOn: string | null;
+  id: string;
+  metadata: Record<string, unknown>;
+  nextOpenAt: Date | null;
+  sourceMarketId: string;
+  status: string;
+  title: string;
+};
+
+export type BotCreateRecurringMarketSeriesResult = {
+  firstMarket: BotMarket | null;
+  series: BotRecurringMarketSeries;
 };
 
 export type BotPositionView = {
@@ -272,6 +296,57 @@ export async function openMarketCommand(
   });
 
   return parseMarket(result);
+}
+
+export async function createRecurringMarketSeriesCommand(
+  input: BotServices & {
+    actor: Actor;
+    daysOfWeekMask: number;
+    endsOn?: string | null;
+    marketId: string;
+    metadata: Record<string, unknown>;
+  },
+): Promise<BotCreateRecurringMarketSeriesResult> {
+  const result = await request<CreateRecurringMarketSeriesResponse>(
+    input,
+    `/markets/${input.marketId}/recurring-series`,
+    {
+      actor: input.actor,
+      body: {
+        daysOfWeekMask: input.daysOfWeekMask,
+        endsOn: input.endsOn ?? null,
+        metadata: input.metadata,
+      },
+      method: "POST",
+    },
+  );
+
+  return {
+    firstMarket: result.firstMarket ? parseMarket(result.firstMarket) : null,
+    series: parseRecurringMarketSeries(result.series),
+  };
+}
+
+export async function endRecurringMarketSeriesCommand(
+  input: BotServices & {
+    actor: Actor;
+    reason?: string | null;
+    seriesId: string;
+  },
+): Promise<{ series: BotRecurringMarketSeries }> {
+  const result = await request<EndRecurringMarketSeriesResponse>(
+    input,
+    `/recurring-market-series/${input.seriesId}/end`,
+    {
+      actor: input.actor,
+      body: {
+        reason: input.reason ?? null,
+      },
+      method: "POST",
+    },
+  );
+
+  return { series: parseRecurringMarketSeries(result.series) };
 }
 
 export async function closeMarketCommand(
@@ -678,6 +753,16 @@ function parseMarket(
       ...contract,
       shareSupplyMicro: BigInt(contract.shareSupplyMicro),
     })),
+  };
+}
+
+function parseRecurringMarketSeries(
+  value: Serialized<CreateRecurringMarketSeriesResponse["series"]>,
+): BotRecurringMarketSeries {
+  return {
+    ...value,
+    endedAt: value.endedAt ? new Date(value.endedAt) : null,
+    nextOpenAt: value.nextOpenAt ? new Date(value.nextOpenAt) : null,
   };
 }
 

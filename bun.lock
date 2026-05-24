@@ -33,6 +33,7 @@
         "@habit-gamba/env": "workspace:*",
         "@habit-gamba/logger": "workspace:*",
         "@habit-gamba/notification": "workspace:*",
+        "@habit-gamba/reminders": "workspace:*",
         "discord.js": "^14.26.4",
         "drizzle-orm": "^0.45.1",
       },
@@ -60,6 +61,15 @@
         "drizzle-orm": "^0.45.1",
       },
     },
+    "apps/recurring-market-worker": {
+      "name": "@habit-gamba/recurring-market-worker",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "@habit-gamba/env": "workspace:*",
+        "@habit-gamba/logger": "workspace:*",
+        "@habit-gamba/recurring": "workspace:*",
+      },
+    },
     "apps/server": {
       "name": "@habit-gamba/server",
       "dependencies": {
@@ -69,6 +79,7 @@
         "@habit-gamba/env": "workspace:*",
         "@habit-gamba/exchange": "workspace:*",
         "@habit-gamba/logger": "workspace:*",
+        "@habit-gamba/recurring": "workspace:*",
         "@habit-gamba/reminders": "workspace:*",
         "@habit-gamba/resolution": "workspace:*",
         "@habit-gamba/users": "workspace:*",
@@ -84,6 +95,7 @@
         "@habit-gamba/contracts": "workspace:*",
         "@habit-gamba/db": "workspace:*",
         "@habit-gamba/exchange": "workspace:*",
+        "@habit-gamba/recurring": "workspace:*",
         "@habit-gamba/resolution": "workspace:*",
         "@habit-gamba/users": "workspace:*",
         "@habit-gamba/wallet": "workspace:*",
@@ -154,6 +166,13 @@
         "@habit-gamba/wallet": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "postgres": "^3.4.7",
+      },
+    },
+    "packages/recurring": {
+      "name": "@habit-gamba/recurring",
+      "dependencies": {
+        "@habit-gamba/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
       },
     },
     "packages/reminders": {
@@ -291,6 +310,10 @@
     "@habit-gamba/notification": ["@habit-gamba/notification@workspace:packages/notification"],
 
     "@habit-gamba/qa": ["@habit-gamba/qa@workspace:packages/qa"],
+
+    "@habit-gamba/recurring": ["@habit-gamba/recurring@workspace:packages/recurring"],
+
+    "@habit-gamba/recurring-market-worker": ["@habit-gamba/recurring-market-worker@workspace:apps/recurring-market-worker"],
 
     "@habit-gamba/reminders": ["@habit-gamba/reminders@workspace:packages/reminders"],
 

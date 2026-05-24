@@ -67,3 +67,17 @@ export const marketRefreshQuerySchema = z.object({
   createdAt: z.string().datetime({ offset: true }).optional(),
   id: z.string().min(1).optional(),
 });
+
+export const createRecurringMarketSeriesSchema = z.object({
+  daysOfWeekMask: z.number().int().min(1).max(127),
+  endsOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/u, "endsOn must use YYYY-MM-DD")
+    .nullable()
+    .optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const endRecurringMarketSeriesSchema = z.object({
+  reason: z.string().trim().min(1).max(1_000).nullable().optional(),
+});

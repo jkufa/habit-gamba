@@ -16,6 +16,9 @@ import {
   cancelMarketCommand,
   closeMarketCommand,
   createMarketCommand,
+  createRecurringMarketSeriesCommand,
+  endRecurringMarketSeriesCommand,
+  formatCloseDate,
   formatMarketRefreshTradeSummary,
   formatTradeSummary,
   listMarketRefreshTrades,
@@ -36,6 +39,7 @@ import {
   marketEmbed,
   modal,
   parseCloseDate,
+  parseEasternDateKey,
   parseMode,
   parseOutcome,
   requireActor,
@@ -53,8 +57,11 @@ export async function handleMarket(
   interaction: ChatInputCommandInteraction,
 ) {
   const subcommand = interaction.options.getSubcommand();
+  const group = interaction.options.getSubcommandGroup(false);
 
-  if (subcommand === "create") {
+  if (group === "recurring") {
+    await handleRecurringMarket(context, interaction, subcommand);
+  } else if (subcommand === "create") {
     await handleMarketCreate(context, interaction);
   } else if (subcommand === "open") {
     await handleMarketOpen(context, interaction);
@@ -82,6 +89,11 @@ export async function handleMarketButton(
   context: BotHandlerContext,
   interaction: ButtonInteraction,
 ) {
+  if (interaction.customId.startsWith("market-recurring:")) {
+    await handleRecurringButton(context, interaction);
+    return;
+  }
+
   if (interaction.customId.startsWith("market-open-now:")) {
     const [, marketId, actorUserId] = interaction.customId.split(":");
 
@@ -204,7 +216,269 @@ export async function handleMarketModal(
       market,
       reason: requiredField(interaction, "reason"),
     });
+  } else if (interaction.customId.startsWith("market-recurring-end:")) {
+    const [, marketId, actorUserId, maskValue] = interaction.customId.split(":");
+
+    if (!marketId || !actorUserId || actorUserId !== interaction.user.id) {
+      throw new RangeError("Recurring setup expired or belongs to another user.");
+    }
+
+    const endsOnInput = field(interaction, "ends_on");
+    await createRecurringMarketFromValues(context, interaction, {
+      daysOfWeekMask: Number(maskValue),
+      endsOn: endsOnInput ? parseEasternDateKey(endsOnInput) : null,
+      marketId,
+    });
   }
+}
+
+async function handleRecurringMarket(
+  context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction,
+  subcommand: string,
+) {
+  if (subcommand === "schedule") {
+    await handleRecurringSchedule(context, interaction);
+  } else if (subcommand === "end") {
+    await handleRecurringEnd(context, interaction);
+  } else if (subcommand === "manage") {
+    await interaction.reply({
+      content: "`/market recurring manage` is reserved for a later management view.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleRecurringSchedule(
+  context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction,
+) {
+  const marketId = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
+
+  if (!marketId) {
+    await interaction.reply({
+      content: "Choose a draft market to schedule as recurring.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const actor = await requireActor(context, interaction);
+  await interaction.reply({
+    components: recurringScheduleRows({
+      actorUserId: interaction.user.id,
+      marketId: await resolveMarketId(context, marketId),
+      mask: 0,
+    }),
+    content: "Select repeat days.",
+    flags: MessageFlags.Ephemeral,
+  });
+  void actor;
+}
+
+async function handleRecurringEnd(
+  context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction,
+) {
+  const marketValue = requireValue(
+    await resolveDefaultMarketValue(context, interaction, interaction.options.getString("market")),
+    "market",
+  );
+  const actor = await requireActor(context, interaction);
+  const market = await viewMarketCommand({
+    ...context.services,
+    marketId: await resolveMarketId(context, marketValue),
+  });
+
+  if (!market.recurringSeriesId) {
+    throw new RangeError("This market is not part of a recurring series.");
+  }
+
+  const result = await endRecurringMarketSeriesCommand({
+    ...context.services,
+    actor,
+    reason: interaction.options.getString("reason"),
+    seriesId: market.recurringSeriesId,
+  });
+
+  await interaction.reply({
+    content: `Recurring market series ended. Future markets will not be created for "${result.series.title}".`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleRecurringButton(context: BotHandlerContext, interaction: ButtonInteraction) {
+  const parsed = parseRecurringButtonCustomId(interaction.customId);
+
+  if (!parsed || parsed.actorUserId !== interaction.user.id) {
+    await interaction.reply({
+      content: "Recurring setup expired or belongs to another user.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (parsed.action === "next") {
+    if (parsed.mask === 0) {
+      await interaction.reply({
+        content: "Select at least one repeat day.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await interaction.showModal(
+      modal(
+        `market-recurring-end:${parsed.marketId}:${parsed.actorUserId}:${parsed.mask}`,
+        "Recurring schedule",
+        [textInput("ends_on", "End date (MM/DD/YYYY)", TextInputStyle.Short, false)],
+      ),
+    );
+    return;
+  }
+
+  const nextMask = parsed.action === "preset" ? parsed.value : parsed.mask ^ (1 << parsed.value);
+
+  await interaction.update({
+    components: recurringScheduleRows({
+      actorUserId: parsed.actorUserId,
+      marketId: parsed.marketId,
+      mask: nextMask,
+    }),
+    content: "Select repeat days.",
+  });
+
+  void context;
+}
+
+const DAY_BUTTONS = [
+  { bit: 1, label: "Mon" },
+  { bit: 2, label: "Tue" },
+  { bit: 3, label: "Wed" },
+  { bit: 4, label: "Thu" },
+  { bit: 5, label: "Fri" },
+  { bit: 6, label: "Sat" },
+  { bit: 0, label: "Sun" },
+] as const;
+
+const DAILY_MASK = 0b1111111;
+const WEEKDAYS_MASK = 0b0111110;
+
+function recurringScheduleRows(input: { actorUserId: string; marketId: string; mask: number }) {
+  const weeklyMask = currentEasternWeekdayMask();
+
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...DAY_BUTTONS.slice(0, 4).map((day) => recurringDayButton(input, day)),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      ...DAY_BUTTONS.slice(4).map((day) => recurringDayButton(input, day)),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(recurringPresetCustomId(input, DAILY_MASK))
+        .setLabel("Daily")
+        .setStyle(input.mask === DAILY_MASK ? ButtonStyle.Primary : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(recurringPresetCustomId(input, WEEKDAYS_MASK))
+        .setLabel("Weekdays")
+        .setStyle(input.mask === WEEKDAYS_MASK ? ButtonStyle.Primary : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(recurringPresetCustomId(input, weeklyMask))
+        .setLabel("Weekly")
+        .setStyle(input.mask === weeklyMask ? ButtonStyle.Primary : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`market-recurring:next:${input.marketId}:${input.actorUserId}:${input.mask}`)
+        .setLabel("Next")
+        .setStyle(ButtonStyle.Success),
+    ),
+  ];
+}
+
+function currentEasternWeekdayMask(now = new Date()) {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+  }).format(now);
+  const bit = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+
+  return 1 << Math.max(bit, 0);
+}
+
+function recurringDayButton(
+  input: { actorUserId: string; marketId: string; mask: number },
+  day: (typeof DAY_BUTTONS)[number],
+) {
+  const selected = (input.mask & (1 << day.bit)) !== 0;
+
+  return new ButtonBuilder()
+    .setCustomId(
+      `market-recurring:day:${input.marketId}:${input.actorUserId}:${input.mask}:${day.bit}`,
+    )
+    .setLabel(day.label)
+    .setStyle(selected ? ButtonStyle.Primary : ButtonStyle.Secondary);
+}
+
+function recurringPresetCustomId(
+  input: { actorUserId: string; marketId: string; mask: number },
+  mask: number,
+) {
+  return `market-recurring:preset:${input.marketId}:${input.actorUserId}:${input.mask}:${mask}`;
+}
+
+function parseRecurringButtonCustomId(customId: string):
+  | {
+      action: "day" | "preset";
+      actorUserId: string;
+      marketId: string;
+      mask: number;
+      value: number;
+    }
+  | {
+      action: "next";
+      actorUserId: string;
+      marketId: string;
+      mask: number;
+    }
+  | null {
+  const [, action, marketId, actorUserId, maskValue, value] = customId.split(":");
+
+  if (
+    (action !== "day" && action !== "preset" && action !== "next") ||
+    !marketId ||
+    !actorUserId ||
+    !maskValue
+  ) {
+    return null;
+  }
+
+  const mask = Number(maskValue);
+
+  if (!Number.isInteger(mask) || mask < 0 || mask > DAILY_MASK) {
+    return null;
+  }
+
+  if (action === "next") {
+    return { action, actorUserId, marketId, mask };
+  }
+
+  const parsedValue = Number(value);
+
+  if (!Number.isInteger(parsedValue)) {
+    return null;
+  }
+
+  return {
+    action,
+    actorUserId,
+    marketId,
+    mask,
+    value: parsedValue,
+  };
 }
 
 async function handleMarketCreate(
@@ -445,6 +719,52 @@ async function createMarketFromValues(
     content:
       "Market created as a draft. Use Open now to set close date. Markets close at 11:59:59pm ET.",
     embeds: [marketEmbed(result.market, "Market created")],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function createRecurringMarketFromValues(
+  context: BotHandlerContext,
+  interaction: ModalSubmitInteraction,
+  values: {
+    daysOfWeekMask: number;
+    endsOn: string | null;
+    marketId: string;
+  },
+) {
+  const actor = await requireActor(context, interaction);
+  const result = await createRecurringMarketSeriesCommand({
+    ...context.services,
+    actor,
+    daysOfWeekMask: values.daysOfWeekMask,
+    endsOn: values.endsOn,
+    marketId: values.marketId,
+    metadata: {
+      discord: {
+        channelId: interaction.channelId,
+        guildId: interaction.guildId,
+      },
+    },
+  });
+
+  if (result.firstMarket) {
+    const thread = await ensureAndPersistMarketThread(context, interaction, result.firstMarket);
+
+    await interaction.reply({
+      content: "Recurring series scheduled. First market opened.",
+      embeds: [marketEmbed(result.firstMarket, "Market opened")],
+      flags: MessageFlags.Ephemeral,
+    });
+    await postOrUpdateMarketSummary(context, result.firstMarket, thread);
+    return;
+  }
+
+  await interaction.reply({
+    content: `Recurring series scheduled. Next market opens ${
+      result.series.nextOpenAt
+        ? formatCloseDate(result.series.nextOpenAt)
+        : "on the next selected day"
+    }.`,
     flags: MessageFlags.Ephemeral,
   });
 }

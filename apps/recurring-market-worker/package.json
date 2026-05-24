@@ -1,21 +1,17 @@
 {
-  "name": "@habit-gamba/event-worker",
+  "name": "@habit-gamba/recurring-market-worker",
   "type": "module",
   "scripts": {
     "build": "bun run check-types",
     "check-types": "tsc --noEmit",
     "lint": "oxlint .",
-    "start": "bun --env-file=../../.env --env-file=.env src/index.ts",
+    "start": "bun --env-file=../../.env src/index.ts",
     "test": "bun --env-file=../../.env vitest run --passWithNoTests"
   },
   "dependencies": {
     "@habit-gamba/db": "workspace:*",
-    "@habit-gamba/discord": "workspace:*",
     "@habit-gamba/env": "workspace:*",
     "@habit-gamba/logger": "workspace:*",
-    "@habit-gamba/notification": "workspace:*",
-    "@habit-gamba/reminders": "workspace:*",
-    "discord.js": "^14.26.4",
-    "drizzle-orm": "^0.45.1"
+    "@habit-gamba/recurring": "workspace:*"
   }
 }

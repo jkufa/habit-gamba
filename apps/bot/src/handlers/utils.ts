@@ -170,6 +170,33 @@ export function parseCloseDate(value: string) {
   return zonedTimeToUtc(year, month, day, 23, 59, 59, "America/New_York");
 }
 
+export function parseEasternDateKey(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+
+  if (!match) {
+    throw new RangeError("Date must use MM/DD/YYYY.");
+  }
+
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    throw new RangeError("Date must be a real date in MM/DD/YYYY format.");
+  }
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 export function formatTodayEasternDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     day: "2-digit",

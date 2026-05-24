@@ -4,6 +4,7 @@ export type ServiceName =
   | "event-worker"
   | "market-lifecycle-worker"
   | "market-reminder-worker"
+  | "recurring-market-worker"
   | "server";
 export type LogFields = Record<string, unknown>;
 

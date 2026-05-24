@@ -6,7 +6,8 @@ import {
 } from "@habit-gamba/discord";
 import { schema, type DbClient } from "@habit-gamba/db";
 import type { MarketNotificationIntent } from "@habit-gamba/notification";
-import { DiscordAPIError, REST, Routes } from "discord.js";
+import { scheduleMarketReminderDeliveries } from "@habit-gamba/reminders";
+import { DiscordAPIError, REST, Routes, ThreadAutoArchiveDuration } from "discord.js";
 import { eq } from "drizzle-orm";
 
 import type { EventDeliveryProvider, EventDeliveryProviderResult } from "./service";
@@ -33,6 +34,10 @@ async function deliverDiscordMarketNotification(
   intent: MarketNotificationIntent,
 ): Promise<EventDeliveryProviderResult> {
   const discord = getDiscordMetadata(intent.market.metadata);
+
+  if (intent.kind === "market_opened") {
+    return deliverDiscordMarketOpenedNotification(input, intent, discord);
+  }
 
   if (!discord.threadId) {
     return {
@@ -82,6 +87,49 @@ async function deliverDiscordMarketNotification(
   };
 }
 
+async function deliverDiscordMarketOpenedNotification(
+  input: DiscordDeliveryProviderInput,
+  intent: Extract<MarketNotificationIntent, { kind: "market_opened" }>,
+  discord: ReturnType<typeof getDiscordMetadata>,
+): Promise<EventDeliveryProviderResult> {
+  if (discord.threadId) {
+    return { outcome: "delivered" };
+  }
+
+  if (!discord.channelId) {
+    return {
+      outcome: "skipped",
+      reason: "missing_discord_channel_id",
+    };
+  }
+
+  const embed = settlementMarketEmbed(intent.market, {
+    title: intent.summaryTitle,
+  });
+  const parentMessage = await postMessage(input.rest, discord.channelId, {
+    content: intent.content,
+    embeds: [embed.toJSON()],
+  });
+  const thread = await startThreadFromMessage(input.rest, discord.channelId, parentMessage.id, {
+    name: intent.market.title.slice(0, 90),
+  });
+  const summary = await postMessage(input.rest, thread.id, {
+    embeds: [embed.toJSON()],
+  });
+
+  await pinMessage(input.rest, thread.id, summary.id).catch(() => undefined);
+  await persistSummaryMessageId(input.db, intent.market.id, intent.market.metadata, {
+    channelId: discord.channelId,
+    ...(discord.guildId ? { guildId: discord.guildId } : {}),
+    summaryMessageId: summary.id,
+    threadId: thread.id,
+  });
+
+  return {
+    outcome: "delivered",
+  };
+}
+
 async function editMessage(
   rest: REST,
   channelId: string,
@@ -114,6 +162,27 @@ async function postMessage(
   return message;
 }
 
+async function startThreadFromMessage(
+  rest: REST,
+  channelId: string,
+  messageId: string,
+  input: { name: string },
+): Promise<{ id: string }> {
+  const thread = await rest.post(Routes.threads(channelId, messageId), {
+    body: {
+      auto_archive_duration: ThreadAutoArchiveDuration.OneWeek,
+      name: input.name,
+    },
+    reason: "Habit Gamba recurring market thread",
+  });
+
+  if (!isMessageWithId(thread)) {
+    throw new Error("Discord response missing thread id");
+  }
+
+  return thread;
+}
+
 async function pinMessage(rest: REST, channelId: string, messageId: string): Promise<void> {
   await rest.put(Routes.channelPin(channelId, messageId));
 }
@@ -124,13 +193,18 @@ async function persistSummaryMessageId(
   metadata: Record<string, unknown>,
   discordPatch: Record<string, unknown>,
 ): Promise<void> {
-  await db
+  const [market] = await db
     .update(schema.markets)
     .set({
       metadata: mergeDiscordMetadata(metadata, discordPatch),
       updatedAt: new Date(),
     })
-    .where(eq(schema.markets.id, marketId));
+    .where(eq(schema.markets.id, marketId))
+    .returning();
+
+  if (market) {
+    await scheduleMarketReminderDeliveries({ db, market });
+  }
 }
 
 function isMessageWithId(value: unknown): value is { id: string } {

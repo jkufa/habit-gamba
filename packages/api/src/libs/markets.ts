@@ -11,6 +11,10 @@ import type {
   PreviewCancelMarketResult,
   ResolveMarketResult as DomainResolveMarketResult,
 } from "@habit-gamba/resolution";
+import type {
+  CreateRecurringMarketSeriesResult as DomainCreateRecurringMarketSeriesResult,
+  EndRecurringMarketSeriesResult as DomainEndRecurringMarketSeriesResult,
+} from "@habit-gamba/recurring";
 
 export type CreateMarketResponse = CreateBinaryMarketResult;
 export type OpenMarketResponse = MarketWithContracts;
@@ -32,6 +36,14 @@ export type PreviewCancelResponse = PreviewCancelMarketResult;
 export type RefreshTradesResponse = {
   trades: MarketRefreshTradeDto[];
 };
+export type RecurringMarketSeriesResponse = typeof schema.recurringMarketSeries.$inferSelect;
+export type CreateRecurringMarketSeriesResponse = Omit<
+  DomainCreateRecurringMarketSeriesResult,
+  "firstMarket"
+> & {
+  firstMarket: ExchangeMarketView | null;
+};
+export type EndRecurringMarketSeriesResponse = DomainEndRecurringMarketSeriesResult;
 export type MarketRefreshTradeDto = Pick<
   typeof schema.trades.$inferSelect,
   "cashDeltaMicro" | "createdAt" | "id" | "sharesDeltaMicro"
