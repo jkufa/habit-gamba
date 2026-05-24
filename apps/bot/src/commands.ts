@@ -95,6 +95,9 @@ function openMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommand
     )
     .addStringOption((option) =>
       option.setName("closes_at").setDescription("Close date (MM/DD/YYYY)"),
+    )
+    .addBooleanOption((option) =>
+      option.setName("recurring").setDescription("Schedule this draft as recurring"),
     );
 }
 

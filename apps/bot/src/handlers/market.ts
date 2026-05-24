@@ -89,6 +89,21 @@ export async function handleMarketButton(
   context: BotHandlerContext,
   interaction: ButtonInteraction,
 ) {
+  if (interaction.customId.startsWith("market-recurring-start:")) {
+    const [, marketId, actorUserId] = interaction.customId.split(":");
+
+    if (!marketId || !actorUserId || actorUserId !== interaction.user.id) {
+      await interaction.reply({
+        content: "Recurring setup expired or belongs to another user.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await replyWithRecurringSchedule(context, interaction, marketId);
+    return;
+  }
+
   if (interaction.customId.startsWith("market-recurring:")) {
     await handleRecurringButton(context, interaction);
     return;
@@ -156,8 +171,33 @@ export async function handleMarketModal(
           await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
           "market",
         );
+    const recurring = parseOptionalBooleanField(optionalField(interaction, "recurring"));
+
+    if (recurring === null) {
+      await interaction.reply({
+        content: "Recurring must be yes or no.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (recurring) {
+      await replyWithRecurringSchedule(context, interaction, marketId);
+      return;
+    }
+
+    const closesAt = field(interaction, "closes_at");
+
+    if (!closesAt) {
+      await interaction.reply({
+        content: "Close date is required unless recurring is yes.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     await openMarketFromValues(context, interaction, {
-      closesAt: requiredField(interaction, "closes_at"),
+      closesAt,
       market: marketId,
     });
   } else if (interaction.customId === "market-view") {
@@ -267,12 +307,21 @@ async function handleRecurringSchedule(
     return;
   }
 
+  await replyWithRecurringSchedule(context, interaction, marketId);
+}
+
+async function replyWithRecurringSchedule(
+  context: BotHandlerContext,
+  interaction: ButtonInteraction | ChatInputCommandInteraction | ModalSubmitInteraction,
+  marketId: string,
+) {
   const actor = await requireActor(context, interaction);
   await interaction.reply({
     components: recurringScheduleRows({
       actorUserId: interaction.user.id,
       marketId: await resolveMarketId(context, marketId),
       mask: 0,
+      selectedPreset: null,
     }),
     content: "Select repeat days.",
     flags: MessageFlags.Ephemeral,
@@ -348,6 +397,7 @@ async function handleRecurringButton(context: BotHandlerContext, interaction: Bu
       actorUserId: parsed.actorUserId,
       marketId: parsed.marketId,
       mask: nextMask,
+      selectedPreset: parsed.action === "preset" ? parsed.preset : null,
     }),
     content: "Select repeat days.",
   });
@@ -368,9 +418,19 @@ const DAY_BUTTONS = [
 const DAILY_MASK = 0b1111111;
 const WEEKDAYS_MASK = 0b0111110;
 
-function recurringScheduleRows(input: { actorUserId: string; marketId: string; mask: number }) {
-  const weeklyMask = currentEasternWeekdayMask();
+type RecurringPreset = "daily" | "weekdays" | "weekly";
 
+type RecurringScheduleState = {
+  actorUserId: string;
+  marketId: string;
+  mask: number;
+  selectedPreset: RecurringPreset | null;
+};
+
+function recurringScheduleRows(
+  input: RecurringScheduleState,
+  weeklyMask = currentEasternWeekdayMask(),
+) {
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       ...DAY_BUTTONS.slice(0, 4).map((day) => recurringDayButton(input, day)),
@@ -380,17 +440,19 @@ function recurringScheduleRows(input: { actorUserId: string; marketId: string; m
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
-        .setCustomId(recurringPresetCustomId(input, DAILY_MASK))
+        .setCustomId(recurringPresetCustomId(input, "daily", DAILY_MASK))
         .setLabel("Daily")
-        .setStyle(input.mask === DAILY_MASK ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        .setStyle(input.selectedPreset === "daily" ? ButtonStyle.Primary : ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(recurringPresetCustomId(input, WEEKDAYS_MASK))
+        .setCustomId(recurringPresetCustomId(input, "weekdays", WEEKDAYS_MASK))
         .setLabel("Weekdays")
-        .setStyle(input.mask === WEEKDAYS_MASK ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        .setStyle(
+          input.selectedPreset === "weekdays" ? ButtonStyle.Primary : ButtonStyle.Secondary,
+        ),
       new ButtonBuilder()
-        .setCustomId(recurringPresetCustomId(input, weeklyMask))
+        .setCustomId(recurringPresetCustomId(input, "weekly", weeklyMask))
         .setLabel("Weekly")
-        .setStyle(input.mask === weeklyMask ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        .setStyle(input.selectedPreset === "weekly" ? ButtonStyle.Primary : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`market-recurring:next:${input.marketId}:${input.actorUserId}:${input.mask}`)
         .setLabel("Next")
@@ -409,10 +471,7 @@ function currentEasternWeekdayMask(now = new Date()) {
   return 1 << Math.max(bit, 0);
 }
 
-function recurringDayButton(
-  input: { actorUserId: string; marketId: string; mask: number },
-  day: (typeof DAY_BUTTONS)[number],
-) {
+function recurringDayButton(input: RecurringScheduleState, day: (typeof DAY_BUTTONS)[number]) {
   const selected = (input.mask & (1 << day.bit)) !== 0;
 
   return new ButtonBuilder()
@@ -424,18 +483,27 @@ function recurringDayButton(
 }
 
 function recurringPresetCustomId(
-  input: { actorUserId: string; marketId: string; mask: number },
+  input: RecurringScheduleState,
+  preset: RecurringPreset,
   mask: number,
 ) {
-  return `market-recurring:preset:${input.marketId}:${input.actorUserId}:${input.mask}:${mask}`;
+  return `market-recurring:preset:${input.marketId}:${input.actorUserId}:${input.mask}:${preset}:${mask}`;
 }
 
 function parseRecurringButtonCustomId(customId: string):
   | {
-      action: "day" | "preset";
+      action: "day";
       actorUserId: string;
       marketId: string;
       mask: number;
+      value: number;
+    }
+  | {
+      action: "preset";
+      actorUserId: string;
+      marketId: string;
+      mask: number;
+      preset: RecurringPreset;
       value: number;
     }
   | {
@@ -445,7 +513,8 @@ function parseRecurringButtonCustomId(customId: string):
       mask: number;
     }
   | null {
-  const [, action, marketId, actorUserId, maskValue, value] = customId.split(":");
+  const [, action, marketId, actorUserId, maskValue, presetOrValue, presetMaskValue] =
+    customId.split(":");
 
   if (
     (action !== "day" && action !== "preset" && action !== "next") ||
@@ -466,9 +535,30 @@ function parseRecurringButtonCustomId(customId: string):
     return { action, actorUserId, marketId, mask };
   }
 
-  const parsedValue = Number(value);
+  const preset = parseRecurringPreset(presetOrValue);
+  const parsedValue = Number(presetMaskValue ?? presetOrValue);
 
   if (!Number.isInteger(parsedValue)) {
+    return null;
+  }
+
+  if (action === "day") {
+    if (parsedValue < 0 || parsedValue > 6) {
+      return null;
+    }
+
+    return {
+      action,
+      actorUserId,
+      marketId,
+      mask,
+      value: parsedValue,
+    };
+  }
+
+  const parsedPreset = preset ?? inferRecurringPreset(parsedValue);
+
+  if (!parsedPreset || parsedValue < 1 || parsedValue > DAILY_MASK) {
     return null;
   }
 
@@ -477,9 +567,65 @@ function parseRecurringButtonCustomId(customId: string):
     actorUserId,
     marketId,
     mask,
+    preset: parsedPreset,
     value: parsedValue,
   };
 }
+
+function parseRecurringPreset(value: string | undefined): RecurringPreset | null {
+  if (value === "daily" || value === "weekdays" || value === "weekly") {
+    return value;
+  }
+
+  return null;
+}
+
+function inferRecurringPreset(mask: number): RecurringPreset | null {
+  if (mask === DAILY_MASK) {
+    return "daily";
+  }
+
+  if (mask === WEEKDAYS_MASK) {
+    return "weekdays";
+  }
+
+  if (mask === currentEasternWeekdayMask()) {
+    return "weekly";
+  }
+
+  return null;
+}
+
+function optionalField(interaction: ModalSubmitInteraction, customId: string) {
+  try {
+    return field(interaction, customId);
+  } catch {
+    return null;
+  }
+}
+
+function parseOptionalBooleanField(value: string | null) {
+  const normalized = value?.trim().toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized === "yes" || normalized === "true" || normalized === "y" || normalized === "1") {
+    return true;
+  }
+
+  if (normalized === "no" || normalized === "false" || normalized === "n" || normalized === "0") {
+    return false;
+  }
+
+  return null;
+}
+
+export const recurringMarketHandlerTestUtils = {
+  parseOptionalBooleanField,
+  recurringScheduleRows,
+};
 
 async function handleMarketCreate(
   interactionContext: BotHandlerContext,
@@ -515,6 +661,20 @@ async function handleMarketOpen(
     interaction.options.getString("market"),
   );
   const closesAt = interaction.options.getString("closes_at");
+  const recurring = interaction.options.getBoolean("recurring") ?? false;
+
+  if (recurring) {
+    if (!marketId) {
+      await interaction.reply({
+        content: "Choose a draft market to schedule as recurring.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await replyWithRecurringSchedule(context, interaction, marketId);
+    return;
+  }
 
   if (!marketId || !closesAt) {
     await interaction.showModal(
@@ -524,9 +684,10 @@ async function handleMarketOpen(
           "closes_at",
           "Close date (MM/DD/YYYY)",
           TextInputStyle.Short,
-          true,
+          false,
           closesAt ?? formatTodayEasternDate(),
         ),
+        textInput("recurring", "Recurring? yes/no", TextInputStyle.Short, false),
       ]),
     );
     return;
@@ -715,7 +876,7 @@ async function createMarketFromValues(
   }
 
   await interaction.reply({
-    components: [openNowActionRow(result.market.id, interaction.user.id)],
+    components: [draftMarketActionRow(result.market.id, interaction.user.id)],
     content:
       "Market created as a draft. Use Open now to set close date. Markets close at 11:59:59pm ET.",
     embeds: [marketEmbed(result.market, "Market created")],
@@ -1074,17 +1235,22 @@ function openMarketDateModal(marketId: string) {
       "closes_at",
       "Close date (MM/DD/YYYY)",
       TextInputStyle.Short,
-      true,
+      false,
       formatTodayEasternDate(),
     ),
+    textInput("recurring", "Recurring? yes/no", TextInputStyle.Short, false),
   ]);
 }
 
-function openNowActionRow(marketId: string, actorUserId: string) {
+function draftMarketActionRow(marketId: string, actorUserId: string) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`market-open-now:${marketId}:${actorUserId}`)
       .setLabel("Open now")
       .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`market-recurring-start:${marketId}:${actorUserId}`)
+      .setLabel("Schedule recurring")
+      .setStyle(ButtonStyle.Secondary),
   );
 }

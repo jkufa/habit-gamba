@@ -23,4 +23,17 @@ describe("bot commands", () => {
     expect(credit?.options?.every((option) => option.required)).toBe(true);
     expect(debit?.options?.every((option) => option.required)).toBe(true);
   });
+
+  it("registers recurring flag on market open", () => {
+    const market = commandData.find((command) => command.name === "market") as
+      | CommandOption
+      | undefined;
+    const open = market?.options?.find((command) => command.name === "open");
+
+    expect(open?.options?.map((option) => option.name)).toEqual([
+      "market",
+      "closes_at",
+      "recurring",
+    ]);
+  });
 });
