@@ -1,5 +1,6 @@
 import {
   ApplicationCommandOptionType,
+  PermissionFlagsBits,
   SlashCommandBuilder,
   SlashCommandSubcommandGroupBuilder,
   SlashCommandSubcommandBuilder,
@@ -9,12 +10,13 @@ export const commandData = [
   new SlashCommandBuilder()
     .setName("admin")
     .setDescription("Admin tools")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand(adminCreditCommand)
     .addSubcommand(adminDebitCommand)
     .addSubcommandGroup(adminMarketCommandGroup),
   new SlashCommandBuilder()
     .setName("account")
-    .setDescription("Manage your Habit Gamba account")
+    .setDescription("Manage your REP account")
     .addSubcommand((command) =>
       command.setName("register").setDescription("Register your Discord account"),
     )
@@ -46,6 +48,18 @@ export const commandData = [
     .addSubcommand(resolveMarketCommand)
     .addSubcommand(cancelMarketCommand)
     .addSubcommandGroup(recurringMarketCommandGroup),
+  new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("Explain how to use RepBet commands")
+    .addStringOption((option) =>
+      option.setName("topic").setDescription("Command or topic to explain").setAutocomplete(true),
+    ),
+  new SlashCommandBuilder()
+    .setName("glossary")
+    .setDescription("Explain key market terms")
+    .addStringOption((option) =>
+      option.setName("term").setDescription("Term to explain").setAutocomplete(true),
+    ),
 ].map((command) => command.toJSON());
 
 function adminCreditCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {

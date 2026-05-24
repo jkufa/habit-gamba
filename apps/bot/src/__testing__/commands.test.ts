@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import { commandData } from "../commands";
 
 type CommandOption = {
+  default_member_permissions?: string;
+  description?: string;
   name: string;
   options?: CommandOption[];
   required?: boolean;
+  type?: number;
 };
 
 describe("bot commands", () => {
@@ -40,5 +43,27 @@ describe("bot commands", () => {
       "closes_at",
       "recurring",
     ]);
+  });
+
+  it("registers help and glossary commands with autocomplete topic options", () => {
+    const help = commandData.find((command) => command.name === "help") as
+      | CommandOption
+      | undefined;
+    const glossary = commandData.find((command) => command.name === "glossary") as
+      | CommandOption
+      | undefined;
+
+    expect(help?.options?.map((option) => option.name)).toEqual(["topic"]);
+    expect(glossary?.options?.map((option) => option.name)).toEqual(["term"]);
+    expect(help?.description).toContain("RepBet");
+    expect(glossary?.description).toBe("Explain key market terms");
+  });
+
+  it("limits admin command discovery to Discord administrators", () => {
+    const admin = commandData.find((command) => command.name === "admin") as
+      | CommandOption
+      | undefined;
+
+    expect(admin?.default_member_permissions).toBe("8");
   });
 });

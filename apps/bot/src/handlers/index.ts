@@ -3,14 +3,28 @@ import type { Interaction } from "discord.js";
 import { autocompleteMarkets, getDiscordUser } from "../service";
 import { handleAdmin } from "./admin";
 import { handleAccount } from "./account";
+import { canViewAdminHelp, handleGlossary, handleHelp } from "./help";
 import { handleLeaderboard } from "./leaderboard";
 import { handleMarket, handleMarketButton, handleMarketModal } from "./market";
 import { handlePosition } from "./position";
+import { glossaryTermChoices, helpTopicChoices } from "../help-content";
 import type { BotHandlerContext } from "./context";
 
 export async function handleInteraction(context: BotHandlerContext, interaction: Interaction) {
   if (interaction.isAutocomplete()) {
     const focused = interaction.options.getFocused(true);
+
+    if (interaction.commandName === "help" && focused.name === "topic") {
+      await interaction.respond(
+        helpTopicChoices(String(focused.value), canViewAdminHelp(interaction)),
+      );
+      return;
+    }
+
+    if (interaction.commandName === "glossary" && focused.name === "term") {
+      await interaction.respond(glossaryTermChoices(String(focused.value)));
+      return;
+    }
 
     if (focused.name !== "market") {
       await interaction.respond([]);
@@ -75,6 +89,16 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
 
   if (interaction.commandName === "leaderboard") {
     await handleLeaderboard(context, interaction);
+    return;
+  }
+
+  if (interaction.commandName === "help") {
+    await handleHelp(interaction);
+    return;
+  }
+
+  if (interaction.commandName === "glossary") {
+    await handleGlossary(interaction);
     return;
   }
 

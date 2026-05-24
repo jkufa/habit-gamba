@@ -14,6 +14,7 @@ import {
 
 import { getDiscordMetadata, marketEmbed } from "@habit-gamba/discord";
 
+import { APP_CONFIG } from "../app-config";
 import {
   autocompleteMarkets,
   BotApiError,
@@ -100,7 +101,7 @@ export async function ensureMarketThread(
   const thread = await threadManager.create({
     autoArchiveDuration: ThreadAutoArchiveDuration.OneWeek,
     name: market.title.slice(0, 90),
-    reason: "Habit Gamba market thread",
+    reason: `${APP_CONFIG.name} market thread`,
   });
 
   return thread;
