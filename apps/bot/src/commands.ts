@@ -8,9 +8,10 @@ import {
 export const commandData = [
   new SlashCommandBuilder()
     .setName("admin")
-    .setDescription("Admin account tools")
+    .setDescription("Admin tools")
     .addSubcommand(adminCreditCommand)
-    .addSubcommand(adminDebitCommand),
+    .addSubcommand(adminDebitCommand)
+    .addSubcommandGroup(adminMarketCommandGroup),
   new SlashCommandBuilder()
     .setName("account")
     .setDescription("Manage your Habit Gamba account")
@@ -41,7 +42,6 @@ export const commandData = [
     .addSubcommand(viewMarketCommand)
     .addSubcommand(buyMarketCommand)
     .addSubcommand(sellMarketCommand)
-    .addSubcommand(closeMarketCommand)
     .addSubcommand(refreshMarketCommand)
     .addSubcommand(resolveMarketCommand)
     .addSubcommand(cancelMarketCommand)
@@ -54,6 +54,22 @@ function adminCreditCommand(command: SlashCommandSubcommandBuilder): SlashComman
 
 function adminDebitCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
   return adminAdjustmentCommand(command, "debit", "Debit REP from a registered user");
+}
+
+function adminMarketCommandGroup(
+  group: SlashCommandSubcommandGroupBuilder,
+): SlashCommandSubcommandGroupBuilder {
+  return group
+    .setName("market")
+    .setDescription("Admin market tools")
+    .addSubcommand((command) =>
+      command
+        .setName("close")
+        .setDescription("Close a market")
+        .addStringOption((option) =>
+          option.setName("market").setDescription("Market").setAutocomplete(true).setRequired(true),
+        ),
+    );
 }
 
 function adminAdjustmentCommand(
@@ -155,15 +171,6 @@ function sellMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommand
         .addChoices({ name: "YES", value: "YES" }, { name: "NO", value: "NO" }),
     )
     .addStringOption((option) => option.setName("amount").setDescription("Contracts to sell"));
-}
-
-function closeMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
-  return command
-    .setName("close")
-    .setDescription("Close a market")
-    .addStringOption((option) =>
-      option.setName("market").setDescription("Market").setAutocomplete(true),
-    );
 }
 
 function refreshMarketCommand(

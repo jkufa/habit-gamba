@@ -14,7 +14,6 @@ import {
 import {
   buyMarketCommand,
   cancelMarketCommand,
-  closeMarketCommand,
   createMarketCommand,
   createRecurringMarketSeriesCommand,
   endRecurringMarketSeriesCommand,
@@ -74,8 +73,6 @@ export async function handleMarket(
       content: "Sell command is registered, but exchange sell API is not implemented yet.",
       flags: MessageFlags.Ephemeral,
     });
-  } else if (subcommand === "close") {
-    await handleMarketClose(context, interaction);
   } else if (subcommand === "refresh") {
     await handleMarketRefresh(context, interaction);
   } else if (subcommand === "resolve") {
@@ -224,18 +221,6 @@ export async function handleMarketModal(
       mode: requiredField(interaction, "mode"),
       outcome: requiredField(interaction, "outcome"),
     });
-  } else if (interaction.customId === "market-close") {
-    const marketValue = requireValue(
-      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
-      "market",
-    );
-    const actor = await requireActor(context, interaction);
-    const market = await closeMarketCommand({
-      ...context.services,
-      actor,
-      marketId: await resolveMarketId(context, marketValue),
-    });
-    await interaction.reply({ embeds: [marketEmbed(market, "Market closed")] });
   } else if (interaction.customId === "market-resolve") {
     const market = requireValue(
       await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
@@ -761,34 +746,6 @@ async function handleMarketBuy(
   await buyMarketFromValues(context, interaction, { amount: value, market, mode, outcome });
 }
 
-async function handleMarketClose(
-  context: BotHandlerContext,
-  interaction: ChatInputCommandInteraction,
-) {
-  const marketId = await resolveDefaultMarketValue(
-    context,
-    interaction,
-    interaction.options.getString("market"),
-  );
-
-  if (!marketId) {
-    await interaction.showModal(
-      modal("market-close", "Close market", [
-        textInput("market", "Market ID or slug", TextInputStyle.Short, true),
-      ]),
-    );
-    return;
-  }
-
-  const actor = await requireActor(context, interaction);
-  const market = await closeMarketCommand({
-    ...context.services,
-    actor,
-    marketId: await resolveMarketId(context, marketId),
-  });
-  await interaction.reply({ embeds: [marketEmbed(market, "Market closed")] });
-}
-
 async function handleMarketRefresh(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
@@ -1104,8 +1061,14 @@ async function refreshMarketThread(
     actor,
     marketId,
   });
-  const thread = await ensureAndPersistMarketThread(context, interaction, market);
   const discordMetadata = getDiscordMetadata(market.metadata);
+  const trades = await listMarketRefreshTrades({
+    ...context.services,
+    actor,
+    lastTradeRefresh: parseLastTradeRefresh(discordMetadata.lastTradeRefresh),
+    marketId,
+  });
+  const thread = await ensureAndPersistMarketThread(context, interaction, market);
 
   if (!thread) {
     await interaction.editReply({
@@ -1114,12 +1077,6 @@ async function refreshMarketThread(
     });
     return;
   }
-
-  const trades = await listMarketRefreshTrades({
-    ...context.services,
-    lastTradeRefresh: parseLastTradeRefresh(discordMetadata.lastTradeRefresh),
-    marketId,
-  });
 
   await postOrUpdateMarketSummary(context, market, thread);
 

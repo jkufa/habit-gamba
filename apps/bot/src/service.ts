@@ -537,6 +537,7 @@ export async function writeMarketDiscordMetadata(
 
 export async function listMarketRefreshTrades(
   input: BotServices & {
+    actor: Actor;
     lastTradeRefresh?: LastTradeRefresh | null;
     marketId: string;
   },
@@ -552,9 +553,7 @@ export async function listMarketRefreshTrades(
   const result = await request<RefreshTradesResponse>(
     input,
     `/markets/${input.marketId}/refresh-trades${query}`,
-    {
-      method: "GET",
-    },
+    withOptionalActor(input.actor, "GET"),
   );
 
   return result.trades.map(parseRefreshTrade);

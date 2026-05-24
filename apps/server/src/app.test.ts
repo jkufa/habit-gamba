@@ -408,6 +408,11 @@ maybeDescribe("server API", () => {
       method: "POST",
     });
 
+    const deniedCreatorClose = await requestJson(`/markets/${market.id}/close`, {
+      body: {},
+      headers: authHeaders(creator.provider, creator.providerUserId),
+      method: "POST",
+    });
     const closeResponse = await requestJson(`/markets/${market.id}/close`, {
       body: {},
       headers: authHeaders(admin.provider, admin.providerUserId),
@@ -415,8 +420,52 @@ maybeDescribe("server API", () => {
     });
     const closeBody = await jsonOk<CloseMarketResponse>(closeResponse);
 
+    expect(deniedCreatorClose.status).toBe(403);
     expect(closeResponse.status).toBe(200);
     expect(closeBody.status).toBe("closed");
+  });
+
+  it("guards market refresh trades to creators and market admins", async () => {
+    const creator = await insertUser("refresh-owner");
+    const other = await insertUser("refresh-other");
+    const admin = await insertUser("refresh-admin");
+    const market = await createMarket(creator.provider, creator.providerUserId);
+
+    await grantUserRole({ db: client.db, role: "market_admin", userId: admin.id });
+    await requestJson(`/markets/${market.id}/open`, {
+      body: {
+        closesAt: "2099-01-01T00:00:00.000Z",
+      },
+      headers: authHeaders(creator.provider, creator.providerUserId),
+      method: "POST",
+    });
+
+    const missingActor = await app.request(`/markets/${market.id}/refresh-trades`, {
+      headers: botHeaders(),
+    });
+    const deniedOther = await app.request(`/markets/${market.id}/refresh-trades`, {
+      headers: {
+        ...botHeaders(),
+        ...authHeaders(other.provider, other.providerUserId),
+      },
+    });
+    const creatorResponse = await app.request(`/markets/${market.id}/refresh-trades`, {
+      headers: {
+        ...botHeaders(),
+        ...authHeaders(creator.provider, creator.providerUserId),
+      },
+    });
+    const adminResponse = await app.request(`/markets/${market.id}/refresh-trades`, {
+      headers: {
+        ...botHeaders(),
+        ...authHeaders(admin.provider, admin.providerUserId),
+      },
+    });
+
+    expect(missingActor.status).toBe(401);
+    expect(deniedOther.status).toBe(403);
+    expect(creatorResponse.status).toBe(200);
+    expect(adminResponse.status).toBe(200);
   });
 
   it("lets app admins adjust registered user balances with idempotency", async () => {
@@ -618,6 +667,7 @@ maybeDescribe("server API", () => {
       headers: authHeaders(creator.provider, creator.providerUserId),
       method: "POST",
     });
+    await grantUserRole({ db: client.db, role: "market_admin", userId: creator.id });
     await requestJson(`/markets/${closedMarket.id}/close`, {
       body: {},
       headers: authHeaders(creator.provider, creator.providerUserId),

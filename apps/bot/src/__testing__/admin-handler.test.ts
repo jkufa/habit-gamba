@@ -55,6 +55,7 @@ function context(): BotHandlerContext {
 function interaction(): ChatInputCommandInteraction {
   return {
     options: {
+      getSubcommandGroup: () => null,
       getString: (name: string) => (name === "amount" ? "1.25" : "audit reason"),
       getSubcommand: () => "credit",
       getUser: () => ({

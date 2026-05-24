@@ -330,7 +330,8 @@ export function createApp(input: {
 
   app.post("/markets/:id/close", async (context) => {
     const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    await requireMarketAdmin(input.db, user.id);
+    const market = await requireMarket(input.db, context.req.param("id"));
     const result = await closeMarket({
       db: input.db,
       marketId: market.id,
@@ -475,6 +476,8 @@ export function createApp(input: {
   app.get("/markets/:id/refresh-trades", async (context) => {
     requireInternalBot(context, input.botApiToken);
 
+    const user = await requireUser(context, input.db);
+    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
     const query = marketRefreshQuerySchema.parse({
       createdAt: context.req.query("createdAt"),
       id: context.req.query("id"),
@@ -483,7 +486,7 @@ export function createApp(input: {
       db: input.db,
       lastTradeRefresh:
         query.createdAt && query.id ? { createdAt: query.createdAt, id: query.id } : null,
-      marketId: context.req.param("id"),
+      marketId: market.id,
     });
 
     const response = { trades: result } satisfies RefreshTradesResponse;
@@ -614,6 +617,18 @@ async function requireMarketManager(db: DbClient, marketId: string, userId: stri
   }
 
   return market;
+}
+
+async function requireMarketAdmin(db: DbClient, userId: string) {
+  const canManageMarkets = await hasUserPermission({
+    db,
+    permission: "market.manage",
+    userId,
+  });
+
+  if (!canManageMarkets) {
+    throw new ApiError(403, "FORBIDDEN", "Only a market admin may do this");
+  }
 }
 
 async function requireRecurringSeriesManager(db: DbClient, seriesId: string, userId: string) {
