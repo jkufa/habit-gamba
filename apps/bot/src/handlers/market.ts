@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  escapeMarkdown,
   MessageFlags,
   TextInputStyle,
   type Attachment,
@@ -19,7 +20,8 @@ import {
   endRecurringMarketSeriesCommand,
   formatCloseDate,
   formatMarketRefreshTradeSummary,
-  formatTradeSummary,
+  formatPrivateTradeSummary,
+  formatPublicTradeSummary,
   listMarketRefreshTrades,
   openMarketCommand,
   parseLastTradeRefresh,
@@ -727,7 +729,7 @@ async function handleMarketBuy(
 
   if (!market || !outcome || !mode || !value) {
     await interaction.showModal(
-      modal("market-buy", "Buy contracts", [
+      modal("market-buy", "Buy shares", [
         textInput("market", "Market ID or slug", TextInputStyle.Short, true, market ?? ""),
         textInput("outcome", "YES or NO", TextInputStyle.Short, true, outcome ?? ""),
         textInput(
@@ -901,7 +903,7 @@ async function openMarketFromValues(
   });
   const thread = await ensureAndPersistMarketThread(context, interaction, market);
 
-  await interaction.reply({ embeds: [marketEmbed(market, "Market opened")] });
+  await interaction.reply({ content: marketOpenedContent(market.title) });
   await postOrUpdateMarketSummary(context, market, thread);
 }
 
@@ -921,19 +923,24 @@ async function buyMarketFromValues(
     outcome,
     value: values.amount,
   });
-  const summary = formatTradeSummary({
+  const publicSummary = formatPublicTradeSummary({
     costMicro: result.quote.costMicro,
     outcome,
     sharesMicro: result.quote.sharesMicro,
-    title: result.market.title,
+    user: actor,
+  });
+  const privateSummary = formatPrivateTradeSummary({
+    costMicro: result.quote.costMicro,
+    outcome,
+    sharesMicro: result.quote.sharesMicro,
   });
 
   await interaction.reply({
-    content: summary,
+    content: privateSummary,
     embeds: [marketEmbed(result.market, "Trade executed")],
     flags: MessageFlags.Ephemeral,
   });
-  await postToMarketThread(context, interaction, result.market, summary);
+  await postToMarketThread(context, interaction, result.market, publicSummary);
 }
 
 async function resolveMarketFromValues(
@@ -1083,7 +1090,6 @@ async function refreshMarketThread(
   for (const trade of trades) {
     await thread.send({
       content: formatMarketRefreshTradeSummary({
-        title: market.title,
         trade,
       }),
     });
@@ -1197,6 +1203,10 @@ function openMarketDateModal(marketId: string) {
     ),
     textInput("recurring", "Recurring? yes/no", TextInputStyle.Short, false),
   ]);
+}
+
+function marketOpenedContent(title: string) {
+  return `Market opened: **${escapeMarkdown(title)}**`;
 }
 
 function draftMarketActionRow(marketId: string, actorUserId: string) {

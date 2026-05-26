@@ -21,7 +21,7 @@ describe("help content", () => {
     const data = buildHelpEmbed("market buy", false).toJSON();
 
     expect(data.title).toBe("/market buy");
-    expect(data.description).toContain("Buy YES or NO contracts");
+    expect(data.description).toContain("Buy YES or NO shares");
     expect(data.description).toContain("prices can move");
   });
 
@@ -54,6 +54,7 @@ describe("help content", () => {
 
     expect(overview.title).toBe("Glossary");
     expect(overview.description).toContain("**REP**");
+    expect(overview.description).toContain("**Share**");
     expect(rep.title).toBe("REP");
     expect(rep.description).toContain("unit used for balances");
   });

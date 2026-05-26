@@ -144,7 +144,7 @@ function viewMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommand
 function buyMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
   return command
     .setName("buy")
-    .setDescription("Buy YES or NO contracts")
+    .setDescription("Buy YES or NO shares")
     .addStringOption((option) =>
       option.setName("market").setDescription("Market").setAutocomplete(true).setRequired(false),
     )
@@ -167,14 +167,14 @@ function buyMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandS
       option.setName("spend_rep").setDescription("REP budget, up to 2 decimals"),
     )
     .addStringOption((option) =>
-      option.setName("target_shares").setDescription("Target contracts, up to 2 decimals"),
+      option.setName("target_shares").setDescription("Target shares, up to 2 decimals"),
     );
 }
 
 function sellMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandSubcommandBuilder {
   return command
     .setName("sell")
-    .setDescription("Sell contracts")
+    .setDescription("Sell shares")
     .addStringOption((option) =>
       option.setName("market").setDescription("Market").setAutocomplete(true),
     )
@@ -184,7 +184,7 @@ function sellMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommand
         .setDescription("Outcome")
         .addChoices({ name: "YES", value: "YES" }, { name: "NO", value: "NO" }),
     )
-    .addStringOption((option) => option.setName("amount").setDescription("Contracts to sell"));
+    .addStringOption((option) => option.setName("amount").setDescription("Shares to sell"));
 }
 
 function refreshMarketCommand(

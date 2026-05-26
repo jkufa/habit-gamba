@@ -7,7 +7,13 @@ import {
 import { schema, type DbClient } from "@habit-gamba/db";
 import type { MarketNotificationIntent } from "@habit-gamba/notification";
 import { scheduleMarketReminderDeliveries } from "@habit-gamba/reminders";
-import { DiscordAPIError, REST, Routes, ThreadAutoArchiveDuration } from "discord.js";
+import {
+  DiscordAPIError,
+  escapeMarkdown,
+  REST,
+  Routes,
+  ThreadAutoArchiveDuration,
+} from "discord.js";
 import { eq } from "drizzle-orm";
 
 import type { EventDeliveryProvider, EventDeliveryProviderResult } from "./service";
@@ -107,8 +113,7 @@ async function deliverDiscordMarketOpenedNotification(
     title: intent.summaryTitle,
   });
   const parentMessage = await postMessage(input.rest, discord.channelId, {
-    content: intent.content,
-    embeds: [embed.toJSON()],
+    content: `Market opened: **${escapeMarkdown(intent.market.title)}**`,
   });
   const thread = await startThreadFromMessage(input.rest, discord.channelId, parentMessage.id, {
     name: intent.market.title.slice(0, 90),

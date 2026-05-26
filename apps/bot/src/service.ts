@@ -76,6 +76,11 @@ export type BotBalance = {
   userId: string;
 };
 
+type TradeActor = {
+  displayName: string;
+  handle: string | null;
+};
+
 export type BotMarket = {
   closesAt: Date | null;
   contracts: Array<{
@@ -621,25 +626,47 @@ export function marketSummaryFields(market: {
   ];
 }
 
-export function formatTradeSummary(input: {
+export function formatPublicTradeSummary(input: {
   costMicro: bigint;
   outcome: string;
   sharesMicro: bigint;
-  title: string;
+  user: TradeActor;
 }) {
-  return `${input.outcome} ${formatMicro(input.sharesMicro, "contracts")} bought for ${formatMicro(input.costMicro)} on ${input.title}`;
+  return `${formatTradeActor(input.user)} bought ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} @ ${formatMicro(averageSharePriceMicro(input))}`;
 }
 
-export function formatMarketRefreshTradeSummary(input: {
-  title: string;
-  trade: MarketRefreshTrade;
+export function formatPrivateTradeSummary(input: {
+  costMicro: bigint;
+  outcome: string;
+  sharesMicro: bigint;
 }) {
-  const buyer = input.trade.buyerHandle
-    ? `${input.trade.buyerDisplayName} (@${input.trade.buyerHandle})`
-    : input.trade.buyerDisplayName;
+  return `You bought ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} @ ${formatMicro(averageSharePriceMicro(input))} for ${formatMicro(input.costMicro)}.`;
+}
+
+export function formatMarketRefreshTradeSummary(input: { trade: MarketRefreshTrade }) {
   const costMicro = -input.trade.cashDeltaMicro;
 
-  return `${buyer} bought ${input.trade.outcome} ${formatMicro(input.trade.sharesDeltaMicro, "contracts")} for ${formatMicro(costMicro)} on ${input.title}`;
+  return formatPublicTradeSummary({
+    costMicro,
+    outcome: input.trade.outcome,
+    sharesMicro: input.trade.sharesDeltaMicro,
+    user: {
+      displayName: input.trade.buyerDisplayName,
+      handle: input.trade.buyerHandle,
+    },
+  });
+}
+
+function formatTradeActor(actor: TradeActor) {
+  return actor.handle ? `${actor.displayName} (@${actor.handle})` : actor.displayName;
+}
+
+function averageSharePriceMicro(input: { costMicro: bigint; sharesMicro: bigint }) {
+  if (input.sharesMicro <= 0n) {
+    throw new RangeError("sharesMicro must be positive");
+  }
+
+  return (input.costMicro * 1_000_000n + input.sharesMicro / 2n) / input.sharesMicro;
 }
 
 export function formatCloseDate(date: Date): string {

@@ -31,10 +31,15 @@ export type RepliableBotInteraction =
   | ChatInputCommandInteraction
   | ModalSubmitInteraction;
 
+export type RegisteredActor = Actor & {
+  displayName: string;
+  handle: string | null;
+};
+
 export async function requireActor(
   context: BotHandlerContext,
   interaction: RepliableBotInteraction,
-): Promise<Actor> {
+): Promise<RegisteredActor> {
   const user = await getDiscordUser({
     ...context.services,
     discordUserId: interaction.user.id,
@@ -45,7 +50,9 @@ export async function requireActor(
   }
 
   return {
+    displayName: user.displayName,
     discordUserId: interaction.user.id,
+    handle: user.handle,
     userId: user.id,
   };
 }

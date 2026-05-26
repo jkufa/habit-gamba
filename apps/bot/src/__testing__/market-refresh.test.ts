@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatMarketRefreshTradeSummary,
+  formatPrivateTradeSummary,
+  formatPublicTradeSummary,
   selectMarketRefreshTradesForPosting,
   serializeLastTradeRefresh,
   type MarketRefreshTrade,
@@ -50,20 +52,83 @@ describe("market refresh trades", () => {
     expect(selected.map((item) => item.id)).toEqual(["trade-c"]);
   });
 
-  it("formats refresh trade messages with buyer, outcome, contracts, spend, and title", () => {
+  it("formats public trade messages with buyer, outcome, shares, and entry price", () => {
+    expect(
+      formatPublicTradeSummary({
+        costMicro: 2_000_000n,
+        outcome: "YES",
+        sharesMicro: 4_000_000n,
+        user: {
+          displayName: "API Buyer",
+          handle: "api-buyer",
+        },
+      }),
+    ).toBe("API Buyer (@api-buyer) bought 4.00 YES shares @ 0.50 REP");
+  });
+
+  it("formats public trade messages without handle", () => {
+    expect(
+      formatPublicTradeSummary({
+        costMicro: 1_000_000n,
+        outcome: "NO",
+        sharesMicro: 2_000_000n,
+        user: {
+          displayName: "API Buyer",
+          handle: null,
+        },
+      }),
+    ).toBe("API Buyer bought 2.00 NO shares @ 0.50 REP");
+  });
+
+  it("formats private trade confirmations with total spend", () => {
+    expect(
+      formatPrivateTradeSummary({
+        costMicro: 2_000_000n,
+        outcome: "YES",
+        sharesMicro: 4_000_000n,
+      }),
+    ).toBe("You bought 4.00 YES shares @ 0.50 REP for 2.00 REP.");
+  });
+
+  it("rounds entry price using integer math", () => {
+    expect(
+      formatPublicTradeSummary({
+        costMicro: 1_000_000n,
+        outcome: "YES",
+        sharesMicro: 3_000_000n,
+        user: {
+          displayName: "API Buyer",
+          handle: null,
+        },
+      }),
+    ).toBe("API Buyer bought 3.00 YES shares @ 0.33 REP");
+  });
+
+  it("rejects non-positive share quantities for entry price", () => {
+    expect(() =>
+      formatPublicTradeSummary({
+        costMicro: 1_000_000n,
+        outcome: "YES",
+        sharesMicro: 0n,
+        user: {
+          displayName: "API Buyer",
+          handle: null,
+        },
+      }),
+    ).toThrow("sharesMicro must be positive");
+  });
+
+  it("formats refresh trade messages with same public trade copy", () => {
     expect(
       formatMarketRefreshTradeSummary({
-        title: "Will API buys show up?",
         trade: trade(1, {
           buyerDisplayName: "API Buyer",
           buyerHandle: "api-buyer",
           cashDeltaMicro: -2_000_000n,
-          sharesDeltaMicro: 1_234_500n,
+          sharesDeltaMicro: 4_000_000n,
         }),
       }),
-    ).toBe(
-      "API Buyer (@api-buyer) bought YES 1.23 contracts for 2.00 REP on Will API buys show up?",
-    );
+    ).toBe("API Buyer (@api-buyer) bought 4.00 YES shares @ 0.50 REP");
   });
 });
 

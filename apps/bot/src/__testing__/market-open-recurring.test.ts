@@ -54,6 +54,7 @@ describe("market open recurring flow", () => {
         closesAt: new Date("2099-01-02T04:59:59.000Z"),
         prices: { no: 0.5, yes: 0.5 },
         status: "open",
+        title: "Draft _market_",
       }),
     );
   });
@@ -145,7 +146,7 @@ describe("market open recurring flow", () => {
       }),
     );
     expect(interaction.reply).toHaveBeenCalledWith(
-      expect.objectContaining({ embeds: expect.any(Array) }),
+      expect.objectContaining({ content: "Market opened: **Draft \\_market\\_**" }),
     );
   });
 
