@@ -73,7 +73,7 @@ maybeDescribe("exchange buy flow", () => {
     expect(balance.availableAmountMicro).toBe(repToMicro(50n) - result.quote.costMicro);
   });
 
-  it("buys exact target shares and lists open positions", async () => {
+  it("buys exact shares and lists open positions", async () => {
     const userId = await createTestUser("buy-shares");
     const creatorId = await createTestUser("buy-shares-creator");
     const market = await createOpenMarket(creatorId, "buy-shares");

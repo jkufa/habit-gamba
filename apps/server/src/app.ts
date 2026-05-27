@@ -349,7 +349,7 @@ export function createApp(input: {
     });
     const contractId = findContractIdForOutcome(market, body.outcome);
     const result =
-      body.mode === "target_shares"
+      body.mode === "buy_shares"
         ? await exchange.quoteBuyShares({
             db: input.db,
             contractId,
@@ -382,7 +382,7 @@ export function createApp(input: {
     });
     const contractId = findContractIdForOutcome(market, body.outcome);
     const result =
-      body.mode === "target_shares"
+      body.mode === "buy_shares"
         ? await exchange.buyShares({
             contractId,
             db: input.db,

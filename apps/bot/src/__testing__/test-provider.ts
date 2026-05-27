@@ -80,7 +80,7 @@ function createProvider(services: BotServices) {
       actor: Actor,
       input: {
         marketId: string;
-        mode?: "spend_rep" | "target_shares";
+        mode?: "buy_shares" | "spend_rep";
         outcome: "NO" | "YES";
         value: string;
       },

@@ -724,8 +724,8 @@ async function handleMarketBuy(
   const outcome = interaction.options.getString("outcome");
   const mode = interaction.options.getString("mode");
   const spendRep = interaction.options.getString("spend_rep");
-  const targetShares = interaction.options.getString("target_shares");
-  const value = mode === "target_shares" ? targetShares : spendRep;
+  const buyShares = interaction.options.getString("buy_shares");
+  const value = mode === "buy_shares" ? buyShares : spendRep;
 
   if (!market || !outcome || !mode || !value) {
     await interaction.showModal(
@@ -734,7 +734,7 @@ async function handleMarketBuy(
         textInput("outcome", "YES or NO", TextInputStyle.Short, true, outcome ?? ""),
         textInput(
           "mode",
-          "spend_rep or target_shares",
+          "spend_rep or buy_shares",
           TextInputStyle.Short,
           true,
           mode ?? "spend_rep",

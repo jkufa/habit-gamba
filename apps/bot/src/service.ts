@@ -405,7 +405,7 @@ export async function buyMarketCommand(
   input: BotServices & {
     actor: Actor;
     marketId: string;
-    mode: "spend_rep" | "target_shares";
+    mode: "buy_shares" | "spend_rep";
     outcome: "NO" | "YES";
     value: string;
   },

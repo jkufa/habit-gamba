@@ -60,8 +60,6 @@ describe("help content", () => {
   });
 
   it("autocompletes glossary aliases", () => {
-    expect(glossaryTermChoices("target_shares").map((choice) => choice.value)).toEqual([
-      "target shares",
-    ]);
+    expect(glossaryTermChoices("buy_shares").map((choice) => choice.value)).toEqual(["buy shares"]);
   });
 });

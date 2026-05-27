@@ -11,6 +11,7 @@ import type {
   LeaderboardResponse,
   MarketResponse,
   OpenMarketResponse,
+  QuoteMarketResponse,
   ResolveMarketResponse,
   Serialized,
 } from "@habit-gamba/api";
@@ -357,6 +358,14 @@ maybeDescribe("server API", () => {
       },
       method: "POST",
     });
+    const buySharesQuote = await requestJson(`/markets/${market.id}/quote`, {
+      body: {
+        amountMicro: "2000000",
+        mode: "buy_shares",
+        outcome: "NO",
+      },
+      method: "POST",
+    });
     const buy = await requestJson(`/markets/${market.id}/buy`, {
       body: {
         amountMicro: "1000000",
@@ -368,30 +377,34 @@ maybeDescribe("server API", () => {
       },
       method: "POST",
     });
-    const targetSharesBuy = await requestJson(`/markets/${market.id}/buy`, {
+    const buySharesBuy = await requestJson(`/markets/${market.id}/buy`, {
       body: {
         amountMicro: "2000000",
-        mode: "target_shares",
+        mode: "buy_shares",
         outcome: "NO",
       },
       headers: {
         ...authHeaders(buyer.provider, buyer.providerUserId),
-        "Idempotency-Key": `server-test:${buyer.id}:target-shares-buy`,
+        "Idempotency-Key": `server-test:${buyer.id}:buy-shares-buy`,
       },
       method: "POST",
     });
+    const buySharesQuoteBody = await jsonOk<QuoteMarketResponse>(buySharesQuote);
     const buyBody = await jsonOk<BuyMarketResponse>(buy);
-    const targetSharesBuyBody = await jsonOk<BuyMarketResponse>(targetSharesBuy);
+    const buySharesBuyBody = await jsonOk<BuyMarketResponse>(buySharesBuy);
 
     expect(badQuote.status).toBe(400);
     expect(tinyQuote.status).toBe(400);
     expect(missingKey.status).toBe(400);
     expect(tinyBuy.status).toBe(400);
+    expect(buySharesQuote.status).toBe(200);
     expect(buy.status).toBe(201);
-    expect(targetSharesBuy.status).toBe(201);
+    expect(buySharesBuy.status).toBe(201);
+    expect(typeof buySharesQuoteBody.costMicro).toBe("string");
+    expect(buySharesQuoteBody.sharesMicro).toBe("2000000");
     expect(typeof buyBody.quote.costMicro).toBe("string");
     expect(buyBody.trade.userId).toBe(buyer.id);
-    expect(targetSharesBuyBody.quote.sharesMicro).toBe("2000000");
+    expect(buySharesBuyBody.quote.sharesMicro).toBe("2000000");
   });
 
   it("allows global market admins to manage other users' markets", async () => {

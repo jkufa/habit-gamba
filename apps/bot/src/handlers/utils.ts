@@ -218,11 +218,11 @@ export function formatTodayEasternDate(now = new Date()) {
 }
 
 export function parseMode(value: string) {
-  if (value === "spend_rep" || value === "target_shares") {
+  if (value === "spend_rep" || value === "buy_shares") {
     return value;
   }
 
-  throw new RangeError("mode must be spend_rep or target_shares");
+  throw new RangeError("mode must be spend_rep or buy_shares");
 }
 
 export function parseOutcome(value: string) {

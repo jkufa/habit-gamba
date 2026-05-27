@@ -160,14 +160,14 @@ function buyMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommandS
         .setDescription("Amount mode")
         .addChoices(
           { name: "Spend REP", value: "spend_rep" },
-          { name: "Target shares", value: "target_shares" },
+          { name: "Buy shares", value: "buy_shares" },
         ),
     )
     .addStringOption((option) =>
       option.setName("spend_rep").setDescription("REP budget, up to 2 decimals"),
     )
     .addStringOption((option) =>
-      option.setName("target_shares").setDescription("Target shares, up to 2 decimals"),
+      option.setName("buy_shares").setDescription("Shares to buy, up to 2 decimals"),
     );
 }
 

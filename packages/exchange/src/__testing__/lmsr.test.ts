@@ -72,7 +72,7 @@ describe("LMSR engine", () => {
     expect(quote.pricesAfter.no).toBeGreaterThan(quote.pricesBefore.no);
   });
 
-  it("quotes exact target shares", () => {
+  it("quotes exact buy shares", () => {
     const sharesMicro = repToMicro(3n);
     const quote = quoteBuyShares(initialState, "YES", sharesMicro);
 
