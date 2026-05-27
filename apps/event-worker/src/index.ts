@@ -33,6 +33,7 @@ try {
     db,
     deliveryProvider: createDiscordDeliveryProvider({
       db,
+      logger,
       rest: createDiscordRest(env.DISCORD_BOT_TOKEN),
     }),
     env: env.NODE_ENV,

@@ -35,6 +35,7 @@ maybeDescribe("event worker integration", () => {
       },
       type: "market.resolved",
     });
+    const consumerName = `test-deliver-${event.id}`;
     const delivered: string[] = [];
     const provider: EventDeliveryProvider = {
       deliver: async (intent) => {
@@ -43,13 +44,14 @@ maybeDescribe("event worker integration", () => {
       },
     };
 
+    await insertTargetDelivery(event.id, consumerName, occurredAt);
     const result = await runUntilDelivery({
-      consumerName: `test-deliver-${event.id}`,
+      consumerName,
       eventId: event.id,
       now,
       provider,
     });
-    const delivery = await findDelivery(event.id, `test-deliver-${event.id}`);
+    const delivery = await findDelivery(event.id, consumerName);
 
     expect(result.outcome).toBe("delivered");
     expect(delivered).toContain("market.resolved");
@@ -72,16 +74,18 @@ maybeDescribe("event worker integration", () => {
       },
       type: "market.voided",
     });
+    const consumerName = `test-skip-${event.id}`;
 
+    await insertTargetDelivery(event.id, consumerName, occurredAt);
     const result = await runUntilDelivery({
-      consumerName: `test-skip-${event.id}`,
+      consumerName,
       eventId: event.id,
       now,
       provider: {
         deliver: async () => ({ outcome: "skipped", reason: "missing_discord_thread_id" }),
       },
     });
-    const delivery = await findDelivery(event.id, `test-skip-${event.id}`);
+    const delivery = await findDelivery(event.id, consumerName);
 
     expect(result.outcome).toBe("skipped");
     expect(delivery?.status).toBe("skipped");
@@ -122,6 +126,15 @@ maybeDescribe("event worker integration", () => {
       .limit(1);
 
     return delivery;
+  }
+
+  async function insertTargetDelivery(eventId: string, consumerName: string, nextAttemptAt: Date) {
+    await client.db.insert(schema.eventDeliveries).values({
+      consumerName,
+      eventId,
+      id: createId(),
+      nextAttemptAt,
+    });
   }
 
   async function runUntilDelivery(input: {
