@@ -26,6 +26,26 @@ import type { BotHandlerContext } from "./context";
 
 export { getDiscordMetadata, marketEmbed };
 
+const DISCORD_AUTOCOMPLETE_NAME_LIMIT = 100;
+
+export function formatMarketAutocompleteChoice(market: {
+  id: string;
+  slug: string;
+  title: string;
+}): string {
+  const suffix = ` (${market.slug})`;
+
+  if (suffix.length >= DISCORD_AUTOCOMPLETE_NAME_LIMIT) {
+    return market.slug.slice(0, DISCORD_AUTOCOMPLETE_NAME_LIMIT);
+  }
+
+  const maxTitleLength = DISCORD_AUTOCOMPLETE_NAME_LIMIT - suffix.length;
+  const title = market.title.trim().slice(0, maxTitleLength);
+  const name = `${title}${suffix}`.trim();
+
+  return name.length > 0 ? name : market.id.slice(0, DISCORD_AUTOCOMPLETE_NAME_LIMIT);
+}
+
 export type RepliableBotInteraction =
   | ButtonInteraction
   | ChatInputCommandInteraction
@@ -250,6 +270,14 @@ export function requireValue(value: string | null, label: string) {
 
 export async function replyError(interaction: Interaction, error: unknown) {
   const message = userFacingErrorMessage(error);
+
+  if (interaction.isAutocomplete()) {
+    if (!interaction.responded) {
+      await interaction.respond([]);
+    }
+
+    return;
+  }
 
   if (interaction.isRepliable()) {
     const payload = {

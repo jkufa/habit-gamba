@@ -7,6 +7,7 @@ import { canViewAdminHelp, handleGlossary, handleHelp } from "./help";
 import { handleLeaderboard } from "./leaderboard";
 import { handleMarket, handleMarketButton, handleMarketModal } from "./market";
 import { handlePosition } from "./position";
+import { formatMarketAutocompleteChoice } from "./utils";
 import { glossaryTermChoices, helpTopicChoices } from "../help-content";
 import type { BotHandlerContext } from "./context";
 
@@ -51,7 +52,7 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
     const markets = await autocompleteMarkets(autocompleteInput);
     await interaction.respond(
       markets.map((market) => ({
-        name: `${market.title.slice(0, 80)} (${market.slug})`,
+        name: formatMarketAutocompleteChoice(market),
         value: market.id,
       })),
     );

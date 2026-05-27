@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BotApiError } from "../service";
 import {
+  formatMarketAutocompleteChoice,
   formatTodayEasternDate,
   parseCloseDate,
   resolveDefaultMarketValue,
@@ -11,6 +12,22 @@ import {
 describe("bot market utilities", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps market autocomplete names within Discord limits", () => {
+    const longTitle = "Will Jack complete his daily habit streak before the end of May?";
+    const longSlug = "will-jack-complete-his-daily-habit-streak-before-end-of-may-abc123";
+
+    expect(
+      formatMarketAutocompleteChoice({ id: "market-id", slug: longSlug, title: longTitle }).length,
+    ).toBeLessThanOrEqual(100);
+    expect(
+      formatMarketAutocompleteChoice({
+        id: "market-id",
+        slug: "x".repeat(120),
+        title: "Short title",
+      }).length,
+    ).toBeLessThanOrEqual(100);
   });
 
   it("parses close dates as 11:59:59pm America/New_York", () => {
