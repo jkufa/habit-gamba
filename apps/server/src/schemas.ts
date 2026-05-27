@@ -27,7 +27,7 @@ export const tradeSchema = z.object({
     .refine((value) => value >= MIN_TRADE_AMOUNT_MICRO, {
       message: `amountMicro must be at least ${MIN_TRADE_AMOUNT_MICRO.toString()} (0.01 REP/contracts)`,
     }),
-  mode: z.enum(["spend_rep", "buy_shares"]).default("spend_rep"),
+  mode: z.enum(["spend_rep", "buy_shares", "sell_shares", "target_rep"]).default("spend_rep"),
   outcome: z.enum(["YES", "NO"]),
 });
 

@@ -20,6 +20,7 @@ import type {
   RegisterAccountResponse,
   ResolveMarketResponse,
   Serialized,
+  SellMarketResponse,
 } from "@habit-gamba/api";
 import type { Logger } from "@habit-gamba/logger";
 
@@ -49,13 +50,14 @@ export type LastTradeRefresh = {
 };
 
 export type MarketRefreshTrade = {
-  buyerDisplayName: string;
-  buyerHandle: string | null;
+  actorDisplayName: string;
+  actorHandle: string | null;
   cashDeltaMicro: bigint;
   createdAt: Date;
   id: string;
   outcome: "NO" | "YES";
   sharesDeltaMicro: bigint;
+  side: "buy" | "sell";
 };
 
 export type BotUser = {
@@ -163,6 +165,15 @@ export type BotAccountAdjustmentResult = {
 };
 
 export type BotBuyResult = Omit<Serialized<BuyMarketResponse>, "market" | "position" | "quote"> & {
+  market: BotMarket;
+  position: BotPosition;
+  quote: BotQuote;
+};
+
+export type BotSellResult = Omit<
+  Serialized<SellMarketResponse>,
+  "market" | "position" | "quote"
+> & {
   market: BotMarket;
   position: BotPosition;
   quote: BotQuote;
@@ -425,6 +436,30 @@ export async function buyMarketCommand(
   return parseBuyResult(result);
 }
 
+export async function sellMarketCommand(
+  input: BotServices & {
+    actor: Actor;
+    marketId: string;
+    mode: "sell_shares" | "target_rep";
+    outcome: "NO" | "YES";
+    value: string;
+  },
+): Promise<BotSellResult> {
+  const amountMicro = parseDecimalMicro(input.value, input.mode);
+  const result = await request<SellMarketResponse>(input, `/markets/${input.marketId}/sell`, {
+    actor: input.actor,
+    body: {
+      amountMicro: amountMicro.toString(),
+      mode: input.mode,
+      outcome: input.outcome,
+    },
+    idempotencyKey: `discord:${input.actor.discordUserId}:sell:${crypto.randomUUID()}`,
+    method: "POST",
+  });
+
+  return parseSellResult(result);
+}
+
 export async function listPositionsCommand(
   input: BotServices & { actor: Actor },
 ): Promise<{ positions: BotPositionView[] }> {
@@ -644,17 +679,44 @@ export function formatPrivateTradeSummary(input: {
 }
 
 export function formatMarketRefreshTradeSummary(input: { trade: MarketRefreshTrade }) {
-  const costMicro = -input.trade.cashDeltaMicro;
+  if (input.trade.side === "sell") {
+    return formatPublicSellSummary({
+      outcome: input.trade.outcome,
+      payoutMicro: input.trade.cashDeltaMicro,
+      sharesMicro: -input.trade.sharesDeltaMicro,
+      user: {
+        displayName: input.trade.actorDisplayName,
+        handle: input.trade.actorHandle,
+      },
+    });
+  }
 
   return formatPublicTradeSummary({
-    costMicro,
+    costMicro: -input.trade.cashDeltaMicro,
     outcome: input.trade.outcome,
     sharesMicro: input.trade.sharesDeltaMicro,
     user: {
-      displayName: input.trade.buyerDisplayName,
-      handle: input.trade.buyerHandle,
+      displayName: input.trade.actorDisplayName,
+      handle: input.trade.actorHandle,
     },
   });
+}
+
+export function formatPublicSellSummary(input: {
+  outcome: string;
+  payoutMicro: bigint;
+  sharesMicro: bigint;
+  user: TradeActor;
+}) {
+  return `${formatTradeActor(input.user)} sold ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} for ${formatMicro(input.payoutMicro)}.`;
+}
+
+export function formatPrivateSellSummary(input: {
+  outcome: string;
+  payoutMicro: bigint;
+  sharesMicro: bigint;
+}) {
+  return `You sold ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} for ${formatMicro(input.payoutMicro)}.`;
 }
 
 function formatTradeActor(actor: TradeActor) {
@@ -801,6 +863,15 @@ function parseBuyResult(value: Serialized<BuyMarketResponse>): BotBuyResult {
   };
 }
 
+function parseSellResult(value: Serialized<SellMarketResponse>): BotSellResult {
+  return {
+    ...value,
+    market: parseMarket(value.market),
+    position: parsePosition(value.position),
+    quote: parseQuote(value.quote),
+  };
+}
+
 function parsePositionView(
   value: Serialized<PositionsResponse["positions"][number]>,
 ): BotPositionView {
@@ -841,7 +912,9 @@ function parseAccountAdjustmentResult(
 
 function parsePosition(
   value: Serialized<
-    BuyMarketResponse["position"] | PositionsResponse["positions"][number]["position"]
+    | BuyMarketResponse["position"]
+    | PositionsResponse["positions"][number]["position"]
+    | SellMarketResponse["position"]
   >,
 ): BotPosition {
   return {
@@ -850,7 +923,9 @@ function parsePosition(
   };
 }
 
-function parseQuote(value: Serialized<BuyMarketResponse["quote"]>): BotQuote {
+function parseQuote(
+  value: Serialized<BuyMarketResponse["quote"] | SellMarketResponse["quote"]>,
+): BotQuote {
   return {
     ...value,
     costMicro: BigInt(value.costMicro),

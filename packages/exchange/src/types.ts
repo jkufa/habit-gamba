@@ -16,6 +16,10 @@ export type ExchangeService = {
   listPositions: (input: ExchangeListPositionsInput) => Promise<ExchangeListPositionsResult>;
   quoteBuy: (input: ExchangeQuoteBuyInput) => Promise<ExchangeQuoteResult>;
   quoteBuyShares: (input: ExchangeQuoteBuySharesInput) => Promise<ExchangeQuoteResult>;
+  quoteSell: (input: ExchangeQuoteSellSharesInput) => Promise<ExchangeQuoteResult>;
+  quoteSellForRep: (input: ExchangeQuoteSellForRepInput) => Promise<ExchangeQuoteResult>;
+  sell: (input: ExchangeSellInput) => Promise<ExchangeSellResult>;
+  sellForRep: (input: ExchangeSellForRepInput) => Promise<ExchangeSellResult>;
 };
 
 export type ExchangeBuyInput = {
@@ -32,6 +36,14 @@ export type ExchangeBuySharesInput = Omit<ExchangeBuyInput, "amountMicro"> & {
   sharesMicro: bigint;
 };
 
+export type ExchangeSellInput = Omit<ExchangeBuyInput, "amountMicro"> & {
+  sharesMicro: bigint;
+};
+
+export type ExchangeSellForRepInput = Omit<ExchangeBuyInput, "amountMicro"> & {
+  targetRepMicro: bigint;
+};
+
 export type ExchangeQuoteBuyInput = {
   amountMicro: bigint;
   contractId: string;
@@ -42,6 +54,16 @@ export type ExchangeQuoteBuyInput = {
 
 export type ExchangeQuoteBuySharesInput = Omit<ExchangeQuoteBuyInput, "amountMicro"> & {
   sharesMicro: bigint;
+};
+
+export type ExchangeQuoteSellSharesInput = Omit<ExchangeQuoteBuyInput, "amountMicro"> & {
+  sharesMicro: bigint;
+  userId: string;
+};
+
+export type ExchangeQuoteSellForRepInput = Omit<ExchangeQuoteBuyInput, "amountMicro"> & {
+  targetRepMicro: bigint;
+  userId: string;
 };
 
 export type ExchangeListPositionsInput = {
@@ -94,3 +116,5 @@ export type ExchangeBuyResult = {
   quote: LmsrQuote;
   trade: Trade;
 };
+
+export type ExchangeSellResult = ExchangeBuyResult;

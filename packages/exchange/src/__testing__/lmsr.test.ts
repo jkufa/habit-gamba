@@ -1,7 +1,14 @@
 import { repToMicro } from "@habit-gamba/db";
 import { describe, expect, it } from "vitest";
 
-import { applyBuy, getPrices, quoteBuy, quoteBuyShares } from "../lmsr";
+import {
+  applyBuy,
+  getPrices,
+  quoteBuy,
+  quoteBuyShares,
+  quoteSellForRep,
+  quoteSellShares,
+} from "../lmsr";
 import type { LmsrMarketState } from "../lmsr";
 
 const initialState: LmsrMarketState = {
@@ -90,5 +97,27 @@ describe("LMSR engine", () => {
     const quote = quoteBuyShares(imbalancedState, "NO", repToMicro(1_000n));
 
     expect(quote.costMicro).toBeGreaterThan(0n);
+  });
+
+  it("quotes exact sell shares and lowers outcome price", () => {
+    const bought = applyBuy(initialState, "YES", repToMicro(10n));
+    const quote = quoteSellShares(bought, "YES", repToMicro(3n));
+
+    expect(quote.sharesMicro).toBe(repToMicro(3n));
+    expect(quote.costMicro).toBeGreaterThan(0n);
+    expect(quote.pricesAfter.yes).toBeLessThan(quote.pricesBefore.yes);
+  });
+
+  it("quotes minimum shares needed for target REP", () => {
+    const bought = applyBuy(initialState, "YES", repToMicro(10n));
+    const targetRepMicro = repToMicro(1n);
+    const quote = quoteSellForRep(bought, "YES", targetRepMicro, repToMicro(5n));
+    const oneMicroLess =
+      quote.sharesMicro > 1n
+        ? quoteSellShares(bought, "YES", quote.sharesMicro - 1n).costMicro
+        : 0n;
+
+    expect(quote.costMicro).toBeGreaterThanOrEqual(targetRepMicro);
+    expect(oneMicroLess).toBeLessThan(targetRepMicro);
   });
 });

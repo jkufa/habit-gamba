@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createExchange,
   ExchangeIdempotencyConflictError,
+  ExchangeInsufficientPositionError,
   ExchangeSelfTradeError,
   ExchangeTradeAmountTooSmallError,
   MarketNotTradeableError,
@@ -331,6 +332,138 @@ maybeDescribe("exchange buy flow", () => {
         userId: creatorId,
       }),
     ).rejects.toThrow(ExchangeSelfTradeError);
+  });
+
+  it("sells exact shares, credits wallet, and decrements position and supply", async () => {
+    const userId = await createTestUser("sell-shares");
+    const creatorId = await createTestUser("sell-shares-creator");
+    const market = await createOpenMarket(creatorId, "sell-shares");
+    const yesContract = market.contracts[0];
+
+    await fundUser(userId, repToMicro(50n), "sell-shares");
+    const buy = await exchange.buy({
+      amountMicro: repToMicro(10n),
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey: `exchange-test:${userId}:sell-shares:buy`,
+      now: new Date("2030-01-01T00:00:01.000Z"),
+      outcome: "YES",
+      userId,
+    });
+    const balanceAfterBuy = await getBalance({ db: client.db, userId });
+    const quote = await exchange.quoteSell({
+      contractId: yesContract.id,
+      db: client.db,
+      now: new Date("2030-01-01T00:00:02.000Z"),
+      outcome: "YES",
+      sharesMicro: repToMicro(1n),
+      userId,
+    });
+    const sell = await exchange.sell({
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey: `exchange-test:${userId}:sell-shares:sell`,
+      now: new Date("2030-01-01T00:00:02.000Z"),
+      outcome: "YES",
+      sharesMicro: repToMicro(1n),
+      userId,
+    });
+    const balanceAfterSell = await getBalance({ db: client.db, userId });
+
+    expect(sell.trade.side).toBe("sell");
+    expect(sell.trade.cashDeltaMicro).toBe(quote.costMicro);
+    expect(sell.trade.sharesDeltaMicro).toBe(-quote.sharesMicro);
+    expect(sell.ledgerEntry.amountDeltaMicro).toBe(quote.costMicro);
+    expect(sell.ledgerEntry.reason).toBe("payout");
+    expect(sell.position.quantityMicro).toBe(buy.position.quantityMicro - quote.sharesMicro);
+    expect(balanceAfterSell.availableAmountMicro).toBe(
+      balanceAfterBuy.availableAmountMicro + quote.costMicro,
+    );
+  });
+
+  it("sells minimum shares needed for target REP", async () => {
+    const userId = await createTestUser("sell-target");
+    const creatorId = await createTestUser("sell-target-creator");
+    const market = await createOpenMarket(creatorId, "sell-target");
+    const yesContract = market.contracts[0];
+
+    await fundUser(userId, repToMicro(50n), "sell-target");
+    await exchange.buy({
+      amountMicro: repToMicro(10n),
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey: `exchange-test:${userId}:sell-target:buy`,
+      now: new Date("2030-01-01T00:00:01.000Z"),
+      outcome: "YES",
+      userId,
+    });
+
+    const result = await exchange.sellForRep({
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey: `exchange-test:${userId}:sell-target:sell`,
+      now: new Date("2030-01-01T00:00:02.000Z"),
+      outcome: "YES",
+      targetRepMicro: repToMicro(1n),
+      userId,
+    });
+
+    expect(result.quote.costMicro).toBeGreaterThanOrEqual(repToMicro(1n));
+    expect(result.quote.sharesMicro).toBeGreaterThanOrEqual(10_000n);
+    expect(result.trade.sharesDeltaMicro).toBe(-result.quote.sharesMicro);
+  });
+
+  it("rejects sells without sufficient position", async () => {
+    const userId = await createTestUser("sell-insufficient");
+    const creatorId = await createTestUser("sell-insufficient-creator");
+    const market = await createOpenMarket(creatorId, "sell-insufficient");
+
+    await expect(
+      exchange.sell({
+        contractId: market.contracts[0].id,
+        db: client.db,
+        idempotencyKey: `exchange-test:${userId}:sell-insufficient`,
+        now: new Date("2030-01-01T00:00:01.000Z"),
+        outcome: "YES",
+        sharesMicro: repToMicro(1n),
+        userId,
+      }),
+    ).rejects.toThrow(ExchangeInsufficientPositionError);
+  });
+
+  it("returns existing result for duplicate identical sell idempotency key", async () => {
+    const userId = await createTestUser("sell-idempotent");
+    const creatorId = await createTestUser("sell-idempotent-creator");
+    const market = await createOpenMarket(creatorId, "sell-idempotent");
+    const yesContract = market.contracts[0];
+    const idempotencyKey = `exchange-test:${userId}:sell-idempotent:sell`;
+
+    await fundUser(userId, repToMicro(50n), "sell-idempotent");
+    await exchange.buy({
+      amountMicro: repToMicro(10n),
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey: `exchange-test:${userId}:sell-idempotent:buy`,
+      now: new Date("2030-01-01T00:00:01.000Z"),
+      outcome: "YES",
+      userId,
+    });
+
+    const input = {
+      contractId: yesContract.id,
+      db: client.db,
+      idempotencyKey,
+      now: new Date("2030-01-01T00:00:02.000Z"),
+      outcome: "YES" as const,
+      sharesMicro: repToMicro(1n),
+      userId,
+    };
+    const first = await exchange.sell(input);
+    const second = await exchange.sell(input);
+
+    expect(second.idempotent).toBe(true);
+    expect(second.trade.id).toBe(first.trade.id);
+    expect(second.ledgerEntry.id).toBe(first.ledgerEntry.id);
   });
 
   async function createTestUser(label: string): Promise<string> {

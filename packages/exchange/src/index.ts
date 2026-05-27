@@ -2,6 +2,7 @@ export { createExchange } from "./service";
 export {
   ExchangeConfigError,
   ExchangeIdempotencyConflictError,
+  ExchangeInsufficientPositionError,
   ExchangeMarketNotFoundError,
   ExchangeSelfTradeError,
   ExchangeTradeAmountTooSmallError,
@@ -21,5 +22,10 @@ export type {
   ExchangeQuoteBuyInput,
   ExchangeQuoteBuySharesInput,
   ExchangeQuoteResult,
+  ExchangeQuoteSellForRepInput,
+  ExchangeQuoteSellSharesInput,
+  ExchangeSellForRepInput,
+  ExchangeSellInput,
+  ExchangeSellResult,
   ExchangeService,
 } from "./types";

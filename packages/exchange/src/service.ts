@@ -1,16 +1,23 @@
 import { createId, REP_SCALE, schema } from "@habit-gamba/db";
-import { debitRep } from "@habit-gamba/wallet";
+import { debitRep, payoutRep } from "@habit-gamba/wallet";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import {
   ExchangeConfigError,
   ExchangeIdempotencyConflictError,
+  ExchangeInsufficientPositionError,
   ExchangeMarketNotFoundError,
   ExchangeSelfTradeError,
   ExchangeTradeAmountTooSmallError,
   MarketNotTradeableError,
 } from "./errors";
-import { getPrices, quoteBuy as quoteLmsrBuy, quoteBuyShares as quoteLmsrBuyShares } from "./lmsr";
+import {
+  getPrices,
+  quoteBuy as quoteLmsrBuy,
+  quoteBuyShares as quoteLmsrBuyShares,
+  quoteSellForRep as quoteLmsrSellForRep,
+  quoteSellShares as quoteLmsrSellShares,
+} from "./lmsr";
 import type {
   ExchangeBuyInput,
   ExchangeBuyResult,
@@ -23,6 +30,11 @@ import type {
   ExchangeMarketView,
   ExchangeQuoteBuyInput,
   ExchangeQuoteBuySharesInput,
+  ExchangeQuoteSellForRepInput,
+  ExchangeQuoteSellSharesInput,
+  ExchangeSellForRepInput,
+  ExchangeSellInput,
+  ExchangeSellResult,
   ExchangeQuoteResult,
   ExchangeService,
   Market,
@@ -43,8 +55,17 @@ type BuyPayload = {
   userId: string;
 };
 
+type SellPayload = {
+  contractId: string;
+  outcome: "NO" | "YES";
+  sharesMicro?: string;
+  targetRepMicro?: string;
+  userId: string;
+};
+
 type TradeMetadata = {
   buyPayload?: BuyPayload;
+  sellPayload?: SellPayload;
   quote?: SerializedQuote;
 };
 
@@ -74,6 +95,10 @@ export function createExchange(config: ExchangeConfig): ExchangeService {
     listPositions: (input) => listPositions(config, input),
     quoteBuy: (input) => quoteBuy(config, input),
     quoteBuyShares: (input) => quoteBuyShares(config, input),
+    quoteSell: (input) => quoteSell(config, input),
+    quoteSellForRep: (input) => quoteSellForRep(config, input),
+    sell: (input) => sell(config, input),
+    sellForRep: (input) => sellForRep(config, input),
   };
 }
 
@@ -116,6 +141,76 @@ async function quoteBuyShares(
     input.outcome,
     input.sharesMicro,
   );
+
+  return {
+    ...quote,
+    market: toMarketView(config, loaded.market, loaded.contracts),
+  };
+}
+
+async function quoteSell(
+  config: ExchangeConfig,
+  input: ExchangeQuoteSellSharesInput,
+): Promise<ExchangeQuoteResult> {
+  assertMinimumTradeAmount(input.sharesMicro);
+
+  const now = input.now ?? new Date();
+  const loaded = await loadMarketByContractId(input.db, input.contractId);
+
+  assertAcceptsBets(loaded.market, now);
+  assertNotCreatorTrade(loaded.market, input.userId);
+
+  const soldContract = getContractByOutcome(loaded.contracts, input.outcome);
+  const position = await loadPosition(input.db, {
+    contractId: soldContract.id,
+    requestedSharesMicro: input.sharesMicro,
+    userId: input.userId,
+  });
+  const quote = quoteLmsrSellShares(
+    toLmsrState(config, loaded.contracts),
+    input.outcome,
+    input.sharesMicro,
+  );
+
+  assertSufficientPosition(position, {
+    contractId: soldContract.id,
+    requestedSharesMicro: quote.sharesMicro,
+    userId: input.userId,
+  });
+  assertMinimumTradeAmount(quote.costMicro);
+
+  return {
+    ...quote,
+    market: toMarketView(config, loaded.market, loaded.contracts),
+  };
+}
+
+async function quoteSellForRep(
+  config: ExchangeConfig,
+  input: ExchangeQuoteSellForRepInput,
+): Promise<ExchangeQuoteResult> {
+  assertMinimumTradeAmount(input.targetRepMicro);
+
+  const now = input.now ?? new Date();
+  const loaded = await loadMarketByContractId(input.db, input.contractId);
+
+  assertAcceptsBets(loaded.market, now);
+  assertNotCreatorTrade(loaded.market, input.userId);
+
+  const soldContract = getContractByOutcome(loaded.contracts, input.outcome);
+  const position = await loadPosition(input.db, {
+    contractId: soldContract.id,
+    requestedSharesMicro: MIN_TRADE_AMOUNT_MICRO,
+    userId: input.userId,
+  });
+  const quote = quoteLmsrSellForRep(
+    toLmsrState(config, loaded.contracts),
+    input.outcome,
+    input.targetRepMicro,
+    position.quantityMicro,
+  );
+
+  assertMinimumTradeAmount(quote.sharesMicro);
 
   return {
     ...quote,
@@ -200,6 +295,50 @@ async function buyShares(
     },
     quote: (contracts) =>
       quoteLmsrBuyShares(toLmsrState(config, contracts), input.outcome, input.sharesMicro),
+  });
+}
+
+async function sell(config: ExchangeConfig, input: ExchangeSellInput): Promise<ExchangeSellResult> {
+  assertMinimumTradeAmount(input.sharesMicro);
+
+  return executeSell(config, input, {
+    payload: {
+      contractId: input.contractId,
+      outcome: input.outcome,
+      sharesMicro: input.sharesMicro.toString(),
+      userId: input.userId,
+    },
+    quote: (contracts, position) => {
+      assertSufficientPosition(position, {
+        contractId: getContractByOutcome(contracts, input.outcome).id,
+        requestedSharesMicro: input.sharesMicro,
+        userId: input.userId,
+      });
+      return quoteLmsrSellShares(toLmsrState(config, contracts), input.outcome, input.sharesMicro);
+    },
+  });
+}
+
+async function sellForRep(
+  config: ExchangeConfig,
+  input: ExchangeSellForRepInput,
+): Promise<ExchangeSellResult> {
+  assertMinimumTradeAmount(input.targetRepMicro);
+
+  return executeSell(config, input, {
+    payload: {
+      contractId: input.contractId,
+      outcome: input.outcome,
+      targetRepMicro: input.targetRepMicro.toString(),
+      userId: input.userId,
+    },
+    quote: (contracts, position) =>
+      quoteLmsrSellForRep(
+        toLmsrState(config, contracts),
+        input.outcome,
+        input.targetRepMicro,
+        position.quantityMicro,
+      ),
   });
 }
 
@@ -310,6 +449,131 @@ async function executeBuy(
   });
 }
 
+async function executeSell(
+  config: ExchangeConfig,
+  input: ExchangeSellInput | ExchangeSellForRepInput,
+  options: {
+    payload: SellPayload;
+    quote: (contracts: [MarketContract, MarketContract], position: Position) => LmsrQuote;
+  },
+): Promise<ExchangeSellResult> {
+  return input.db.transaction(async (tx) => {
+    const existingTrade = await findExistingTrade(tx, input.idempotencyKey);
+
+    if (existingTrade) {
+      return getIdempotentSellResult(
+        config,
+        tx,
+        input.idempotencyKey,
+        options.payload,
+        existingTrade,
+      );
+    }
+
+    const now = input.now ?? new Date();
+    const loaded = await loadMarketByContractId(tx, input.contractId, { lock: true });
+
+    assertAcceptsBets(loaded.market, now);
+    assertNotCreatorTrade(loaded.market, input.userId);
+
+    const soldContract = getContractByOutcome(loaded.contracts, input.outcome);
+    const positionBefore = await loadPosition(
+      tx,
+      {
+        contractId: soldContract.id,
+        requestedSharesMicro: MIN_TRADE_AMOUNT_MICRO,
+        userId: input.userId,
+      },
+      { lock: true },
+    );
+    const quote = options.quote(loaded.contracts, positionBefore);
+
+    assertSufficientPosition(positionBefore, {
+      contractId: soldContract.id,
+      requestedSharesMicro: quote.sharesMicro,
+      userId: input.userId,
+    });
+    assertMinimumTradeAmount(quote.sharesMicro);
+    assertMinimumTradeAmount(quote.costMicro);
+
+    const tradeId = createId();
+    const ledger = await payoutRep({
+      amountMicro: quote.costMicro,
+      db: input.db,
+      idempotencyKey: sellLedgerIdempotencyKey(input.idempotencyKey),
+      metadata: {
+        contractId: soldContract.id,
+        marketId: loaded.market.id,
+        outcome: input.outcome,
+        tradeId,
+      },
+      sourceId: input.idempotencyKey,
+      sourceType: TRADE_LEDGER_SOURCE_TYPE,
+      tx,
+      userId: input.userId,
+    });
+
+    const [trade] = await tx
+      .insert(schema.trades)
+      .values({
+        cashDeltaMicro: quote.costMicro,
+        contractId: soldContract.id,
+        feeMicro: 0n,
+        id: tradeId,
+        idempotencyKey: input.idempotencyKey,
+        marketId: loaded.market.id,
+        metadata: {
+          quote: serializeQuote(quote),
+          sellPayload: options.payload,
+        },
+        sharesDeltaMicro: -quote.sharesMicro,
+        side: "sell",
+        userId: input.userId,
+      })
+      .onConflictDoNothing({
+        target: schema.trades.idempotencyKey,
+      })
+      .returning();
+
+    if (!trade) {
+      const concurrentTrade = await findExistingTrade(tx, input.idempotencyKey);
+
+      if (!concurrentTrade) {
+        throw new Error("Failed to create trade");
+      }
+
+      return getIdempotentSellResult(
+        config,
+        tx,
+        input.idempotencyKey,
+        options.payload,
+        concurrentTrade,
+      );
+    }
+
+    const position = await decrementPosition(tx, {
+      contractId: soldContract.id,
+      sharesMicro: quote.sharesMicro,
+      userId: input.userId,
+    });
+
+    await decrementContractSupply(tx, soldContract.id, quote.sharesMicro);
+
+    const market = await getMarketView(config, tx, {
+      marketId: loaded.market.id,
+    });
+
+    return {
+      idempotent: false,
+      ledgerEntry: ledger.ledgerEntry,
+      market,
+      position,
+      quote,
+      trade,
+    };
+  });
+}
+
 async function getIdempotentBuyResult(
   config: ExchangeConfig,
   tx: ExchangeExecutor,
@@ -346,6 +610,59 @@ async function getIdempotentBuyResult(
 
   if (!position) {
     throw new Error("Existing exchange trade is missing position");
+  }
+
+  const quote = metadata.quote ? deserializeQuote(metadata.quote) : failMissingQuote();
+  const market = await getMarketView(config, tx, {
+    marketId: trade.marketId,
+  });
+
+  return {
+    idempotent: true,
+    ledgerEntry,
+    market,
+    position,
+    quote,
+    trade,
+  };
+}
+
+async function getIdempotentSellResult(
+  config: ExchangeConfig,
+  tx: ExchangeExecutor,
+  idempotencyKey: string,
+  expectedPayload: SellPayload,
+  trade: Trade,
+): Promise<ExchangeSellResult> {
+  const metadata = asTradeMetadata(trade.metadata);
+
+  if (!isSameSellPayload(metadata.sellPayload, expectedPayload)) {
+    throw new ExchangeIdempotencyConflictError({ idempotencyKey });
+  }
+
+  const [ledgerEntry] = await tx
+    .select()
+    .from(schema.ledgerEntries)
+    .where(eq(schema.ledgerEntries.idempotencyKey, sellLedgerIdempotencyKey(idempotencyKey)))
+    .limit(1);
+
+  if (!ledgerEntry) {
+    throw new Error("Existing exchange sell trade is missing ledger entry");
+  }
+
+  const [position] = await tx
+    .select()
+    .from(schema.positions)
+    .where(
+      and(
+        eq(schema.positions.userId, expectedPayload.userId),
+        eq(schema.positions.contractId, trade.contractId),
+      ),
+    )
+    .limit(1);
+
+  if (!position) {
+    throw new Error("Existing exchange sell trade is missing position");
   }
 
   const quote = metadata.quote ? deserializeQuote(metadata.quote) : failMissingQuote();
@@ -591,8 +908,108 @@ async function incrementContractSupply(
   }
 }
 
+async function decrementPosition(
+  tx: ExchangeExecutor,
+  input: {
+    contractId: string;
+    sharesMicro: bigint;
+    userId: string;
+  },
+): Promise<Position> {
+  const [position] = await tx
+    .update(schema.positions)
+    .set({
+      quantityMicro: sql`${schema.positions.quantityMicro} - ${input.sharesMicro}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.positions.userId, input.userId),
+        eq(schema.positions.contractId, input.contractId),
+      ),
+    )
+    .returning();
+
+  if (!position) {
+    throw new Error("Failed to update position");
+  }
+
+  return position;
+}
+
+async function decrementContractSupply(
+  tx: ExchangeExecutor,
+  contractId: string,
+  sharesMicro: bigint,
+) {
+  const [contract] = await tx
+    .update(schema.contracts)
+    .set({
+      shareSupplyMicro: sql`${schema.contracts.shareSupplyMicro} - ${sharesMicro}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.contracts.id, contractId))
+    .returning();
+
+  if (!contract) {
+    throw new Error("Failed to update contract supply");
+  }
+}
+
+async function loadPosition(
+  tx: ExchangeExecutor,
+  input: {
+    contractId: string;
+    requestedSharesMicro: bigint;
+    userId: string;
+  },
+  options: { lock?: boolean } = {},
+): Promise<Position> {
+  const query = tx
+    .select()
+    .from(schema.positions)
+    .where(
+      and(
+        eq(schema.positions.userId, input.userId),
+        eq(schema.positions.contractId, input.contractId),
+      ),
+    )
+    .limit(1);
+  const [position] = options.lock ? await query.for("update") : await query;
+
+  assertSufficientPosition(position, input);
+
+  if (!position) {
+    throw new Error("unreachable missing position");
+  }
+
+  return position;
+}
+
+function assertSufficientPosition(
+  position: Position | undefined,
+  input: {
+    contractId: string;
+    requestedSharesMicro: bigint;
+    userId: string;
+  },
+) {
+  if (!position || position.quantityMicro < input.requestedSharesMicro) {
+    throw new ExchangeInsufficientPositionError({
+      availableSharesMicro: (position?.quantityMicro ?? 0n).toString(),
+      contractId: input.contractId,
+      requestedSharesMicro: input.requestedSharesMicro.toString(),
+      userId: input.userId,
+    });
+  }
+}
+
 function ledgerIdempotencyKey(idempotencyKey: string): string {
   return `exchange-buy:${idempotencyKey}`;
+}
+
+function sellLedgerIdempotencyKey(idempotencyKey: string): string {
+  return `exchange-sell:${idempotencyKey}`;
 }
 
 function isSameBuyPayload(left: BuyPayload | undefined, right: BuyPayload): boolean {
@@ -601,6 +1018,16 @@ function isSameBuyPayload(left: BuyPayload | undefined, right: BuyPayload): bool
     left.outcome === right.outcome &&
     left.spendMicro === right.spendMicro &&
     left.targetSharesMicro === right.targetSharesMicro &&
+    left.userId === right.userId
+  );
+}
+
+function isSameSellPayload(left: SellPayload | undefined, right: SellPayload): boolean {
+  return (
+    left?.contractId === right.contractId &&
+    left.outcome === right.outcome &&
+    left.sharesMicro === right.sharesMicro &&
+    left.targetRepMicro === right.targetRepMicro &&
     left.userId === right.userId
   );
 }

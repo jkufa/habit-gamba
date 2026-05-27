@@ -73,6 +73,59 @@ export function quoteBuyShares(
   };
 }
 
+export function quoteSellShares(
+  marketState: LmsrMarketState,
+  outcome: LmsrOutcome,
+  sharesMicro: bigint,
+): LmsrQuote {
+  assertValidState(marketState);
+  assertPositiveAmount(sharesMicro);
+
+  const nextState = applyShares(marketState, outcome, -sharesMicro);
+  const payoutMicro = costDecreaseFloor(marketState, nextState);
+
+  return {
+    costMicro: payoutMicro,
+    outcome,
+    pricesAfter: getPrices(nextState),
+    pricesBefore: getPrices(marketState),
+    sharesMicro,
+  };
+}
+
+export function quoteSellForRep(
+  marketState: LmsrMarketState,
+  outcome: LmsrOutcome,
+  targetRepMicro: bigint,
+  maxSharesMicro: bigint,
+): LmsrQuote {
+  assertValidState(marketState);
+  assertPositiveAmount(targetRepMicro);
+  assertPositiveAmount(maxSharesMicro);
+
+  const maxQuote = quoteSellShares(marketState, outcome, maxSharesMicro);
+
+  if (maxQuote.costMicro < targetRepMicro) {
+    throw new RangeError("targetRepMicro exceeds maximum sell payout");
+  }
+
+  let low = 0n;
+  let high = maxSharesMicro;
+
+  while (low + 1n < high) {
+    const mid = (low + high) / 2n;
+    const payoutMicro = costDecreaseFloor(marketState, applyShares(marketState, outcome, -mid));
+
+    if (payoutMicro >= targetRepMicro) {
+      high = mid;
+    } else {
+      low = mid;
+    }
+  }
+
+  return quoteSellShares(marketState, outcome, high);
+}
+
 export function applyBuy(
   marketState: LmsrMarketState,
   outcome: LmsrOutcome,
@@ -136,6 +189,18 @@ function costDeltaCeil(before: LmsrMarketState, after: LmsrMarketState): bigint 
   }
 
   return BigInt(rounded === 0 && delta > 0 ? 1 : rounded);
+}
+
+function costDecreaseFloor(before: LmsrMarketState, after: LmsrMarketState): bigint {
+  const delta = costDeltaMicro(before, after);
+  const payout = -delta;
+  const rounded = Math.floor(payout + 1e-9);
+
+  if (!Number.isSafeInteger(rounded) || rounded < 0 || payout < 0) {
+    throw new RangeError("LMSR quote payout is outside safe integer bounds");
+  }
+
+  return BigInt(rounded);
 }
 
 function costDeltaMicro(before: LmsrMarketState, after: LmsrMarketState): number {

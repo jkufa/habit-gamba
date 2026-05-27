@@ -20,7 +20,9 @@ import {
   endRecurringMarketSeriesCommand,
   formatCloseDate,
   formatMarketRefreshTradeSummary,
+  formatPrivateSellSummary,
   formatPrivateTradeSummary,
+  formatPublicSellSummary,
   formatPublicTradeSummary,
   listMarketRefreshTrades,
   openMarketCommand,
@@ -29,6 +31,7 @@ import {
   refreshMarketCommand,
   resolveMarketCommand,
   serializeLastTradeRefresh,
+  sellMarketCommand,
   viewMarketCommand,
   writeMarketDiscordMetadata,
 } from "../service";
@@ -71,10 +74,7 @@ export async function handleMarket(
   } else if (subcommand === "buy") {
     await handleMarketBuy(context, interaction);
   } else if (subcommand === "sell") {
-    await interaction.reply({
-      content: "Sell command is registered, but exchange sell API is not implemented yet.",
-      flags: MessageFlags.Ephemeral,
-    });
+    await handleMarketSell(context, interaction);
   } else if (subcommand === "refresh") {
     await handleMarketRefresh(context, interaction);
   } else if (subcommand === "resolve") {
@@ -218,6 +218,17 @@ export async function handleMarketModal(
       "market",
     );
     await buyMarketFromValues(context, interaction, {
+      amount: requiredField(interaction, "amount"),
+      market,
+      mode: requiredField(interaction, "mode"),
+      outcome: requiredField(interaction, "outcome"),
+    });
+  } else if (interaction.customId === "market-sell") {
+    const market = requireValue(
+      await resolveDefaultMarketValue(context, interaction, field(interaction, "market")),
+      "market",
+    );
+    await sellMarketFromValues(context, interaction, {
       amount: requiredField(interaction, "amount"),
       market,
       mode: requiredField(interaction, "mode"),
@@ -748,6 +759,42 @@ async function handleMarketBuy(
   await buyMarketFromValues(context, interaction, { amount: value, market, mode, outcome });
 }
 
+async function handleMarketSell(
+  context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction,
+) {
+  const market = await resolveDefaultMarketValue(
+    context,
+    interaction,
+    interaction.options.getString("market"),
+  );
+  const outcome = interaction.options.getString("outcome");
+  const mode = interaction.options.getString("mode");
+  const shares = interaction.options.getString("shares");
+  const targetRep = interaction.options.getString("target_rep");
+  const value = mode === "target_rep" ? targetRep : shares;
+
+  if (!market || !outcome || !mode || !value) {
+    await interaction.showModal(
+      modal("market-sell", "Sell shares", [
+        textInput("market", "Market ID or slug", TextInputStyle.Short, true, market ?? ""),
+        textInput("outcome", "YES or NO", TextInputStyle.Short, true, outcome ?? ""),
+        textInput(
+          "mode",
+          "sell_shares or target_rep",
+          TextInputStyle.Short,
+          true,
+          mode ?? "sell_shares",
+        ),
+        textInput("amount", "Amount", TextInputStyle.Short, true, value ?? ""),
+      ]),
+    );
+    return;
+  }
+
+  await sellMarketFromValues(context, interaction, { amount: value, market, mode, outcome });
+}
+
 async function handleMarketRefresh(
   context: BotHandlerContext,
   interaction: ChatInputCommandInteraction,
@@ -914,6 +961,9 @@ async function buyMarketFromValues(
 ) {
   const actor = await requireActor(context, interaction);
   const mode = parseMode(values.mode);
+  if (mode !== "spend_rep" && mode !== "buy_shares") {
+    throw new RangeError("mode must be spend_rep or buy_shares");
+  }
   const outcome = parseOutcome(values.outcome);
   const result = await buyMarketCommand({
     ...context.services,
@@ -932,6 +982,45 @@ async function buyMarketFromValues(
   const privateSummary = formatPrivateTradeSummary({
     costMicro: result.quote.costMicro,
     outcome,
+    sharesMicro: result.quote.sharesMicro,
+  });
+
+  await interaction.reply({
+    content: privateSummary,
+    embeds: [marketEmbed(result.market, "Trade executed")],
+    flags: MessageFlags.Ephemeral,
+  });
+  await postToMarketThread(context, interaction, result.market, publicSummary);
+}
+
+async function sellMarketFromValues(
+  context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+  values: { amount: string; market: string; mode: string; outcome: string },
+) {
+  const actor = await requireActor(context, interaction);
+  const mode = parseMode(values.mode);
+  if (mode !== "sell_shares" && mode !== "target_rep") {
+    throw new RangeError("mode must be sell_shares or target_rep");
+  }
+  const outcome = parseOutcome(values.outcome);
+  const result = await sellMarketCommand({
+    ...context.services,
+    actor,
+    marketId: await resolveMarketId(context, values.market),
+    mode,
+    outcome,
+    value: values.amount,
+  });
+  const publicSummary = formatPublicSellSummary({
+    outcome,
+    payoutMicro: result.quote.costMicro,
+    sharesMicro: result.quote.sharesMicro,
+    user: actor,
+  });
+  const privateSummary = formatPrivateSellSummary({
+    outcome,
+    payoutMicro: result.quote.costMicro,
     sharesMicro: result.quote.sharesMicro,
   });
 

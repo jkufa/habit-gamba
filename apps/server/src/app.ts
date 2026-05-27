@@ -348,20 +348,37 @@ export function createApp(input: {
       marketId,
     });
     const contractId = findContractIdForOutcome(market, body.outcome);
+    const mode = body.mode as string;
     const result =
-      body.mode === "buy_shares"
+      mode === "buy_shares"
         ? await exchange.quoteBuyShares({
             db: input.db,
             contractId,
             outcome: body.outcome,
             sharesMicro: body.amountMicro,
           })
-        : await exchange.quoteBuy({
-            amountMicro: body.amountMicro,
-            contractId,
-            db: input.db,
-            outcome: body.outcome,
-          });
+        : mode === "sell_shares"
+          ? await exchange.quoteSell({
+              db: input.db,
+              contractId,
+              outcome: body.outcome,
+              sharesMicro: body.amountMicro,
+              userId: (await requireUser(context, input.db)).id,
+            })
+          : mode === "target_rep"
+            ? await exchange.quoteSellForRep({
+                db: input.db,
+                contractId,
+                outcome: body.outcome,
+                targetRepMicro: body.amountMicro,
+                userId: (await requireUser(context, input.db)).id,
+              })
+            : await exchange.quoteBuy({
+                amountMicro: body.amountMicro,
+                contractId,
+                db: input.db,
+                outcome: body.outcome,
+              });
 
     return context.json(ok(result));
   });
@@ -376,6 +393,9 @@ export function createApp(input: {
 
     const marketId = context.req.param("id");
     const body = tradeSchema.parse(await context.req.json());
+    if (body.mode === "sell_shares" || body.mode === "target_rep") {
+      throw new ApiError(400, "INVALID_TRADE_MODE", "Buy endpoint requires a buy mode");
+    }
     const market = await exchange.getMarket({
       db: input.db,
       marketId,
@@ -397,6 +417,46 @@ export function createApp(input: {
             db: input.db,
             idempotencyKey,
             outcome: body.outcome,
+            userId: user.id,
+          });
+
+    return context.json(ok(result), result.idempotent ? 200 : 201);
+  });
+
+  app.post("/markets/:id/sell", async (context) => {
+    const user = await requireUser(context, input.db);
+    const idempotencyKey = context.req.header("Idempotency-Key")?.trim();
+
+    if (!idempotencyKey) {
+      throw new ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header is required");
+    }
+
+    const marketId = context.req.param("id");
+    const body = tradeSchema.parse(await context.req.json());
+    if (body.mode === "spend_rep" || body.mode === "buy_shares") {
+      throw new ApiError(400, "INVALID_TRADE_MODE", "Sell endpoint requires a sell mode");
+    }
+    const market = await exchange.getMarket({
+      db: input.db,
+      marketId,
+    });
+    const contractId = findContractIdForOutcome(market, body.outcome);
+    const result =
+      body.mode === "target_rep"
+        ? await exchange.sellForRep({
+            contractId,
+            db: input.db,
+            idempotencyKey,
+            outcome: body.outcome,
+            targetRepMicro: body.amountMicro,
+            userId: user.id,
+          })
+        : await exchange.sell({
+            contractId,
+            db: input.db,
+            idempotencyKey,
+            outcome: body.outcome,
+            sharesMicro: body.amountMicro,
             userId: user.id,
           });
 
@@ -733,13 +793,14 @@ async function listMarketRefreshTrades(input: {
   const limit = cursor ? INCREMENTAL_REFRESH_TRADE_LIMIT : INITIAL_REFRESH_TRADE_LIMIT;
   const rows = await input.db
     .select({
-      buyerDisplayName: schema.users.displayName,
-      buyerHandle: schema.users.handle,
+      actorDisplayName: schema.users.displayName,
+      actorHandle: schema.users.handle,
       cashDeltaMicro: schema.trades.cashDeltaMicro,
       createdAt: schema.trades.createdAt,
       id: schema.trades.id,
       outcome: schema.contracts.outcome,
       sharesDeltaMicro: schema.trades.sharesDeltaMicro,
+      side: schema.trades.side,
     })
     .from(schema.trades)
     .innerJoin(schema.users, eq(schema.users.id, schema.trades.userId))
@@ -747,7 +808,6 @@ async function listMarketRefreshTrades(input: {
     .where(
       and(
         eq(schema.trades.marketId, input.marketId),
-        eq(schema.trades.side, "buy"),
         cursor ? tradeAfterCursorWhere(cursor) : undefined,
       ),
     )
@@ -757,13 +817,14 @@ async function listMarketRefreshTrades(input: {
     )
     .limit(limit);
   const trades = rows.map((row) => ({
-    buyerDisplayName: row.buyerDisplayName,
-    buyerHandle: row.buyerHandle,
+    actorDisplayName: row.actorDisplayName,
+    actorHandle: row.actorHandle,
     cashDeltaMicro: row.cashDeltaMicro,
     createdAt: row.createdAt,
     id: row.id,
     outcome: row.outcome,
     sharesDeltaMicro: row.sharesDeltaMicro,
+    side: row.side,
   }));
 
   return selectMarketRefreshTradesForPosting(trades, input.lastTradeRefresh);

@@ -184,7 +184,21 @@ function sellMarketCommand(command: SlashCommandSubcommandBuilder): SlashCommand
         .setDescription("Outcome")
         .addChoices({ name: "YES", value: "YES" }, { name: "NO", value: "NO" }),
     )
-    .addStringOption((option) => option.setName("amount").setDescription("Shares to sell"));
+    .addStringOption((option) =>
+      option
+        .setName("mode")
+        .setDescription("Amount mode")
+        .addChoices(
+          { name: "Sell shares", value: "sell_shares" },
+          { name: "Target REP", value: "target_rep" },
+        ),
+    )
+    .addStringOption((option) =>
+      option.setName("shares").setDescription("Shares to sell, up to 2 decimals"),
+    )
+    .addStringOption((option) =>
+      option.setName("target_rep").setDescription("Target REP to receive, up to 2 decimals"),
+    );
 }
 
 function refreshMarketCommand(

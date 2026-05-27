@@ -231,7 +231,18 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     lines: [
       "Sell shares back into a market.",
       "",
-      "Status: command is registered, but sell execution is not implemented yet.",
+      "Options:",
+      "- `market` - Market to trade. Defaults to this thread when used inside a market thread.",
+      "- `outcome` - YES or NO shares to sell.",
+      "- `mode` - Choose how to size the sell.",
+      "- `sell_shares` - Exact number of shares to sell.",
+      "- `target_rep` - Minimum REP to receive.",
+      "",
+      "Examples:",
+      "- `/market sell outcome:YES mode:Sell shares shares:2`",
+      `- \`/market sell market:${BUY_EXAMPLE_MARKET.slug} outcome:NO mode:Target REP target_rep:5\``,
+      "",
+      "Notes: target REP sells the minimum shares needed, capped by your owned position. Sells fail if the market is closed, you lack shares, or the trade is below 0.01 shares/REP.",
     ],
   },
   {
@@ -567,6 +578,28 @@ export const GLOSSARY_TERMS: readonly GlossaryTerm[] = [
       "Buy shares is a trade mode where you choose the exact number of shares to buy.",
       "",
       "The REP cost depends on current market price.",
+    ],
+  },
+  {
+    id: "sell shares",
+    aliases: ["sell_shares"],
+    title: "Sell shares",
+    summary: "Trade mode where you choose the number of shares to sell.",
+    detail: [
+      "Sell shares is a trade mode where you choose the exact number of owned shares to sell.",
+      "",
+      "The REP received depends on current market price.",
+    ],
+  },
+  {
+    id: "target rep",
+    aliases: ["target_rep"],
+    title: "Target REP",
+    summary: "Trade mode where you choose the REP amount to receive.",
+    detail: [
+      "Target REP is a sell mode where you choose how much REP to receive.",
+      "",
+      "The exchange sells the minimum shares needed, capped by your owned position.",
     ],
   },
   {

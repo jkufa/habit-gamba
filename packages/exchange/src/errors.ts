@@ -15,7 +15,7 @@ export class ExchangeIdempotencyConflictError extends Error {
       idempotencyKey: string;
     },
   ) {
-    super("Exchange idempotency key was reused with different buy payload");
+    super("Exchange idempotency key was reused with different trade payload");
     this.name = "ExchangeIdempotencyConflictError";
   }
 }
@@ -31,6 +31,22 @@ export class ExchangeTradeAmountTooSmallError extends RangeError {
   ) {
     super(`amountMicro must be at least ${details.minimumAmountMicro} (0.01 REP/contracts)`);
     this.name = "ExchangeTradeAmountTooSmallError";
+  }
+}
+
+export class ExchangeInsufficientPositionError extends Error {
+  readonly code = "EXCHANGE_INSUFFICIENT_POSITION" as const;
+
+  constructor(
+    readonly details: {
+      availableSharesMicro: string;
+      contractId: string;
+      requestedSharesMicro: string;
+      userId: string;
+    },
+  ) {
+    super("Insufficient position for sell");
+    this.name = "ExchangeInsufficientPositionError";
   }
 }
 

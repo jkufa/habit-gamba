@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatMarketRefreshTradeSummary,
+  formatPrivateSellSummary,
   formatPrivateTradeSummary,
+  formatPublicSellSummary,
   formatPublicTradeSummary,
   selectMarketRefreshTradesForPosting,
   serializeLastTradeRefresh,
@@ -90,6 +92,30 @@ describe("market refresh trades", () => {
     ).toBe("You bought 4.00 YES shares @ 0.50 REP for 2.00 REP.");
   });
 
+  it("formats public sell messages with seller, outcome, shares, and payout", () => {
+    expect(
+      formatPublicSellSummary({
+        outcome: "YES",
+        payoutMicro: 2_000_000n,
+        sharesMicro: 4_000_000n,
+        user: {
+          displayName: "API Seller",
+          handle: "api-seller",
+        },
+      }),
+    ).toBe("API Seller (@api-seller) sold 4.00 YES shares for 2.00 REP.");
+  });
+
+  it("formats private sell confirmations with total received", () => {
+    expect(
+      formatPrivateSellSummary({
+        outcome: "NO",
+        payoutMicro: 1_500_000n,
+        sharesMicro: 3_000_000n,
+      }),
+    ).toBe("You sold 3.00 NO shares for 1.50 REP.");
+  });
+
   it("rounds entry price using integer math", () => {
     expect(
       formatPublicTradeSummary({
@@ -122,13 +148,27 @@ describe("market refresh trades", () => {
     expect(
       formatMarketRefreshTradeSummary({
         trade: trade(1, {
-          buyerDisplayName: "API Buyer",
-          buyerHandle: "api-buyer",
+          actorDisplayName: "API Buyer",
+          actorHandle: "api-buyer",
           cashDeltaMicro: -2_000_000n,
           sharesDeltaMicro: 4_000_000n,
         }),
       }),
     ).toBe("API Buyer (@api-buyer) bought 4.00 YES shares @ 0.50 REP");
+  });
+
+  it("formats refresh sell messages with sell copy", () => {
+    expect(
+      formatMarketRefreshTradeSummary({
+        trade: trade(1, {
+          actorDisplayName: "API Seller",
+          actorHandle: "api-seller",
+          cashDeltaMicro: 2_000_000n,
+          sharesDeltaMicro: -4_000_000n,
+          side: "sell",
+        }),
+      }),
+    ).toBe("API Seller (@api-seller) sold 4.00 YES shares for 2.00 REP.");
   });
 });
 
@@ -136,13 +176,14 @@ function trade(index: number, overrides: Partial<MarketRefreshTrade> = {}): Mark
   const padded = String(index).padStart(2, "0");
 
   return {
-    buyerDisplayName: `Buyer ${padded}`,
-    buyerHandle: null,
+    actorDisplayName: `Buyer ${padded}`,
+    actorHandle: null,
     cashDeltaMicro: -1_000_000n,
     createdAt: new Date(`2026-05-17T12:00:${padded}.000Z`),
     id: `trade-${padded}`,
     outcome: "YES",
     sharesDeltaMicro: 1_000_000n,
+    side: "buy",
     ...overrides,
   };
 }

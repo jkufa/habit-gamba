@@ -14,6 +14,7 @@ import type {
   QuoteMarketResponse,
   ResolveMarketResponse,
   Serialized,
+  SellMarketResponse,
 } from "@habit-gamba/api";
 import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
 import { createLogger } from "@habit-gamba/logger";
@@ -389,9 +390,66 @@ maybeDescribe("server API", () => {
       },
       method: "POST",
     });
+    const sellQuote = await requestJson(`/markets/${market.id}/quote`, {
+      body: {
+        amountMicro: "1000000",
+        mode: "sell_shares",
+        outcome: "YES",
+      },
+      headers: authHeaders(buyer.provider, buyer.providerUserId),
+      method: "POST",
+    });
+    const missingSellKey = await requestJson(`/markets/${market.id}/sell`, {
+      body: {
+        amountMicro: "1000000",
+        mode: "sell_shares",
+        outcome: "YES",
+      },
+      headers: authHeaders(buyer.provider, buyer.providerUserId),
+      method: "POST",
+    });
+    const sell = await requestJson(`/markets/${market.id}/sell`, {
+      body: {
+        amountMicro: "1000000",
+        mode: "sell_shares",
+        outcome: "YES",
+      },
+      headers: {
+        ...authHeaders(buyer.provider, buyer.providerUserId),
+        "Idempotency-Key": `server-test:${buyer.id}:sell`,
+      },
+      method: "POST",
+    });
+    const targetRepSell = await requestJson(`/markets/${market.id}/sell`, {
+      body: {
+        amountMicro: "10000",
+        mode: "target_rep",
+        outcome: "NO",
+      },
+      headers: {
+        ...authHeaders(buyer.provider, buyer.providerUserId),
+        "Idempotency-Key": `server-test:${buyer.id}:target-rep-sell`,
+      },
+      method: "POST",
+    });
+    const insufficientSell = await requestJson(`/markets/${market.id}/sell`, {
+      body: {
+        amountMicro: "1000000",
+        mode: "sell_shares",
+        outcome: "YES",
+      },
+      headers: {
+        ...authHeaders(buyer.provider, buyer.providerUserId),
+        "Idempotency-Key": `server-test:${buyer.id}:insufficient-sell`,
+      },
+      method: "POST",
+    });
     const buySharesQuoteBody = await jsonOk<QuoteMarketResponse>(buySharesQuote);
     const buyBody = await jsonOk<BuyMarketResponse>(buy);
     const buySharesBuyBody = await jsonOk<BuyMarketResponse>(buySharesBuy);
+    const sellQuoteBody = await jsonOk<QuoteMarketResponse>(sellQuote);
+    const sellBody = await jsonOk<SellMarketResponse>(sell);
+    const targetRepSellBody = await jsonOk<SellMarketResponse>(targetRepSell);
 
     expect(badQuote.status).toBe(400);
     expect(tinyQuote.status).toBe(400);
@@ -400,11 +458,20 @@ maybeDescribe("server API", () => {
     expect(buySharesQuote.status).toBe(200);
     expect(buy.status).toBe(201);
     expect(buySharesBuy.status).toBe(201);
+    expect(sellQuote.status).toBe(200);
+    expect(missingSellKey.status).toBe(400);
+    expect(sell.status).toBe(201);
+    expect(targetRepSell.status).toBe(201);
+    expect(insufficientSell.status).toBe(422);
     expect(typeof buySharesQuoteBody.costMicro).toBe("string");
     expect(buySharesQuoteBody.sharesMicro).toBe("2000000");
     expect(typeof buyBody.quote.costMicro).toBe("string");
     expect(buyBody.trade.userId).toBe(buyer.id);
     expect(buySharesBuyBody.quote.sharesMicro).toBe("2000000");
+    expect(sellQuoteBody.sharesMicro).toBe("1000000");
+    expect(sellBody.trade.side).toBe("sell");
+    expect(sellBody.trade.cashDeltaMicro).toBe(sellBody.quote.costMicro);
+    expect(BigInt(targetRepSellBody.quote.costMicro)).toBeGreaterThanOrEqual(10000n);
   });
 
   it("allows global market admins to manage other users' markets", async () => {

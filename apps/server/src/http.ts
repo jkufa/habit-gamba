@@ -9,6 +9,7 @@ import {
 import type { ApiErrorResponse, ApiOk, Serialized } from "@habit-gamba/api";
 import {
   ExchangeIdempotencyConflictError,
+  ExchangeInsufficientPositionError,
   ExchangeMarketNotFoundError,
   ExchangeSelfTradeError,
   MarketNotTradeableError,
@@ -118,6 +119,7 @@ function mapError(error: unknown): ApiError {
     error instanceof MarketInvalidTransitionError ||
     error instanceof ResolutionDeadlinePassedError ||
     error instanceof MarketNotTradeableError ||
+    error instanceof ExchangeInsufficientPositionError ||
     error instanceof ExchangeSelfTradeError ||
     error instanceof ResolutionInvalidTransitionError ||
     error instanceof InsufficientFundsError ||

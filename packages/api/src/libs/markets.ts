@@ -5,6 +5,7 @@ import type {
   ExchangeListPositionsResult,
   ExchangeMarketView,
   ExchangeQuoteResult,
+  ExchangeSellResult,
 } from "@habit-gamba/exchange";
 import type {
   CancelMarketResult as DomainCancelMarketResult,
@@ -25,6 +26,7 @@ export type AutocompleteMarketsResponse = {
 };
 export type QuoteMarketResponse = ExchangeQuoteResult;
 export type BuyMarketResponse = ExchangeBuyResult;
+export type SellMarketResponse = ExchangeSellResult;
 export type PositionsResponse = ExchangeListPositionsResult;
 export type ResolveMarketResponse = Omit<DomainResolveMarketResult, "market"> & {
   market: ExchangeMarketView;
@@ -46,10 +48,10 @@ export type CreateRecurringMarketSeriesResponse = Omit<
 export type EndRecurringMarketSeriesResponse = DomainEndRecurringMarketSeriesResult;
 export type MarketRefreshTradeDto = Pick<
   typeof schema.trades.$inferSelect,
-  "cashDeltaMicro" | "createdAt" | "id" | "sharesDeltaMicro"
+  "cashDeltaMicro" | "createdAt" | "id" | "sharesDeltaMicro" | "side"
 > & {
-  buyerDisplayName: string;
-  buyerHandle: string | null;
+  actorDisplayName: string;
+  actorHandle: string | null;
   outcome: "NO" | "YES";
 };
 export type MarketMetadataResponse = typeof schema.markets.$inferSelect;
