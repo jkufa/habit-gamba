@@ -92,7 +92,7 @@ describe("market refresh trades", () => {
     ).toBe("You bought 4.00 YES shares @ 0.50 REP for 2.00 REP.");
   });
 
-  it("formats public sell messages with seller, outcome, shares, and payout", () => {
+  it("formats public sell messages with seller, outcome, shares, and exit price", () => {
     expect(
       formatPublicSellSummary({
         outcome: "YES",
@@ -103,17 +103,17 @@ describe("market refresh trades", () => {
           handle: "api-seller",
         },
       }),
-    ).toBe("API Seller (@api-seller) sold 4.00 YES shares for 2.00 REP.");
+    ).toBe("API Seller (@api-seller) sold 4.00 YES shares @ 0.50 REP");
   });
 
-  it("formats private sell confirmations with total received", () => {
+  it("formats private sell confirmations with exit price and total received", () => {
     expect(
       formatPrivateSellSummary({
         outcome: "NO",
         payoutMicro: 1_500_000n,
         sharesMicro: 3_000_000n,
       }),
-    ).toBe("You sold 3.00 NO shares for 1.50 REP.");
+    ).toBe("You sold 3.00 NO shares @ 0.50 REP and received 1.50 REP.");
   });
 
   it("rounds entry price using integer math", () => {
@@ -168,7 +168,7 @@ describe("market refresh trades", () => {
           side: "sell",
         }),
       }),
-    ).toBe("API Seller (@api-seller) sold 4.00 YES shares for 2.00 REP.");
+    ).toBe("API Seller (@api-seller) sold 4.00 YES shares @ 0.50 REP");
   });
 });
 

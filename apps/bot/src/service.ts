@@ -708,7 +708,7 @@ export function formatPublicSellSummary(input: {
   sharesMicro: bigint;
   user: TradeActor;
 }) {
-  return `${formatTradeActor(input.user)} sold ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} for ${formatMicro(input.payoutMicro)}.`;
+  return `${formatTradeActor(input.user)} sold ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} @ ${formatMicro(averageSharePriceMicro({ costMicro: input.payoutMicro, sharesMicro: input.sharesMicro }))}`;
 }
 
 export function formatPrivateSellSummary(input: {
@@ -716,7 +716,7 @@ export function formatPrivateSellSummary(input: {
   payoutMicro: bigint;
   sharesMicro: bigint;
 }) {
-  return `You sold ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} for ${formatMicro(input.payoutMicro)}.`;
+  return `You sold ${formatMicro(input.sharesMicro, `${input.outcome} shares`)} @ ${formatMicro(averageSharePriceMicro({ costMicro: input.payoutMicro, sharesMicro: input.sharesMicro }))} and received ${formatMicro(input.payoutMicro)}.`;
 }
 
 function formatTradeActor(actor: TradeActor) {
