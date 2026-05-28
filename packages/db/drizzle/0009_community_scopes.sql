@@ -57,6 +57,23 @@ UPDATE "balances" SET "community_id" = 'community_system_default' WHERE "communi
 --> statement-breakpoint
 UPDATE "ledger_entries" SET "community_id" = 'community_system_default' WHERE "community_id" IS NULL;
 --> statement-breakpoint
+INSERT INTO "community_memberships" ("id", "community_id", "user_id", "provider_member_id", "display_name_snapshot", "metadata")
+SELECT
+	u."id" || ':default-membership',
+	'community_system_default',
+	u."id",
+	u."provider_user_id",
+	u."display_name",
+	'{"backfill":true}'::jsonb
+FROM "users" u
+WHERE EXISTS (
+	SELECT 1
+	FROM "balances" b
+	WHERE b."user_id" = u."id"
+		AND b."community_id" = 'community_system_default'
+)
+ON CONFLICT ("community_id", "user_id") DO NOTHING;
+--> statement-breakpoint
 ALTER TABLE "markets" ADD CONSTRAINT "markets_community_id_communities_id_fk" FOREIGN KEY ("community_id") REFERENCES "public"."communities"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "balances" ADD CONSTRAINT "balances_community_id_communities_id_fk" FOREIGN KEY ("community_id") REFERENCES "public"."communities"("id") ON DELETE no action ON UPDATE no action;

@@ -15,6 +15,8 @@ import {
 } from "../src/schema";
 import type { DbClient } from "../src/client";
 
+const DISCORD_COMMUNITY_PROVIDER = "discord";
+
 const seedUsers = [
   {
     balanceId: "01KRS1E7CZPTRH6Q978DCVFAF4",
@@ -47,6 +49,28 @@ const seedUsers = [
     grant: repToMicro(1_000n),
   },
 ] as const;
+
+export async function syncDefaultCommunityToDiscordGuild(
+  db: DbClient,
+  guildId: string,
+  displayName = "Habit Gamba",
+) {
+  await db
+    .update(communities)
+    .set({
+      displayName,
+      provider: DISCORD_COMMUNITY_PROVIDER,
+      providerCommunityId: guildId,
+      updatedAt: new Date(),
+    })
+    .where(eq(communities.id, DEFAULT_COMMUNITY_ID));
+}
+
+export function readDiscordDevGuildId(source: NodeJS.ProcessEnv = process.env): string | null {
+  const guildId = source.DISCORD_DEV_GUILD_ID?.trim();
+
+  return guildId && guildId.length > 0 ? guildId : null;
+}
 
 export async function seedDatabase(db: DbClient) {
   await db.transaction(async (tx) => {
@@ -196,6 +220,12 @@ export async function seedDatabase(db: DbClient) {
         });
     }
   });
+
+  const guildId = readDiscordDevGuildId();
+
+  if (guildId) {
+    await syncDefaultCommunityToDiscordGuild(db, guildId);
+  }
 }
 
 if (import.meta.main) {

@@ -899,7 +899,15 @@ maybeDescribe("server API", () => {
         providerCommunityId: testCommunity.providerCommunityId,
         slug: "server-test-community",
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        set: {
+          displayName: testCommunity.displayName,
+          provider: testCommunity.provider,
+          providerCommunityId: testCommunity.providerCommunityId,
+          updatedAt: new Date(),
+        },
+        target: schema.communities.id,
+      });
     await client.db
       .insert(schema.communityMemberships)
       .values({

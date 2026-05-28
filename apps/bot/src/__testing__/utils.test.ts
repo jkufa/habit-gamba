@@ -5,6 +5,7 @@ import {
   formatMarketAutocompleteChoice,
   formatTodayEasternDate,
   parseCloseDate,
+  requireDiscordCommunity,
   resolveDefaultMarketValue,
   userFacingErrorMessage,
 } from "../handlers/utils";
@@ -38,6 +39,15 @@ describe("bot market utilities", () => {
   it("formats today using America/New_York", () => {
     expect(formatTodayEasternDate(new Date("2026-05-22T03:59:00.000Z"))).toBe("05/21/2026");
     expect(formatTodayEasternDate(new Date("2026-05-22T04:00:00.000Z"))).toBe("05/22/2026");
+  });
+
+  it("rejects guild-only commands outside a server", () => {
+    expect(() =>
+      requireDiscordCommunity({
+        guild: null,
+        guildId: null,
+      }),
+    ).toThrow("Use this command in a server.");
   });
 
   it("resolves missing market values from linked thread context", async () => {
