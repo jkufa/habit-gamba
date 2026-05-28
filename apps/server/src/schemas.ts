@@ -44,6 +44,9 @@ export const limitSchema = z
 
 export const accountIdentitySchema = z.object({
   admin: z.boolean().optional(),
+  communityDisplayName: z.string().trim().min(1).max(280),
+  communityProvider: z.string().trim().min(1).max(80),
+  providerCommunityId: z.string().trim().min(1).max(280),
   displayName: z.string().trim().min(1).max(280),
   handle: z.string().trim().min(1).max(280).nullable().optional(),
   provider: z.string().trim().min(1).max(80),

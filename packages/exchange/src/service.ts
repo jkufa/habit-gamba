@@ -1,4 +1,4 @@
-import { createId, REP_SCALE, schema } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createId, REP_SCALE, schema } from "@habit-gamba/db";
 import { debitRep, payoutRep } from "@habit-gamba/wallet";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
@@ -231,14 +231,21 @@ async function listPositions(
 ): Promise<ExchangeListPositionsResult> {
   const limit = normalizePositionLimit(input.limit);
   const positions = await input.db
-    .select()
+    .select({ position: schema.positions })
     .from(schema.positions)
+    .innerJoin(schema.contracts, eq(schema.contracts.id, schema.positions.contractId))
+    .innerJoin(schema.markets, eq(schema.markets.id, schema.contracts.marketId))
     .where(
-      and(eq(schema.positions.userId, input.userId), sql`${schema.positions.quantityMicro} > 0`),
+      and(
+        eq(schema.positions.userId, input.userId),
+        eq(schema.markets.communityId, input.communityId),
+        sql`${schema.positions.quantityMicro} > 0`,
+      ),
     )
     .orderBy(desc(schema.positions.updatedAt), desc(schema.positions.id))
     .limit(limit);
-  const contractIds = positions.map((position) => position.contractId);
+  const positionRows = positions.map((row) => row.position);
+  const contractIds = positionRows.map((position) => position.contractId);
 
   if (contractIds.length === 0) {
     return { positions: [] };
@@ -256,7 +263,7 @@ async function listPositions(
   const marketsById = new Map(marketViews.map((market) => [market.id, market]));
 
   return {
-    positions: positions.flatMap((position) => {
+    positions: positionRows.flatMap((position) => {
       const contract = contractsById.get(position.contractId);
       const market = contract ? marketsById.get(contract.marketId) : undefined;
 
@@ -374,6 +381,7 @@ async function executeBuy(
     const tradeId = createId();
     const ledger = await debitRep({
       amountMicro: quote.costMicro,
+      communityId: marketCommunityId(loaded.market),
       db: input.db,
       idempotencyKey: ledgerIdempotencyKey(input.idempotencyKey),
       metadata: {
@@ -499,6 +507,7 @@ async function executeSell(
     const tradeId = createId();
     const ledger = await payoutRep({
       amountMicro: quote.costMicro,
+      communityId: marketCommunityId(loaded.market),
       db: input.db,
       idempotencyKey: sellLedgerIdempotencyKey(input.idempotencyKey),
       metadata: {
@@ -758,6 +767,10 @@ function toMarketView(
     contracts,
     prices: getSettlementPrices(market.metadata) ?? getPrices(toLmsrState(config, contracts)),
   };
+}
+
+function marketCommunityId(market: Market): string {
+  return market.communityId ?? DEFAULT_COMMUNITY_ID;
 }
 
 function getSettlementPrices(metadata: Record<string, unknown>) {

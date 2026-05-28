@@ -1,4 +1,4 @@
-import { createId, repToMicro } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createId, repToMicro } from "@habit-gamba/db";
 import { ensureSeedRepGrant, upsertUser } from "@habit-gamba/users";
 import { getBalance } from "@habit-gamba/wallet";
 
@@ -21,7 +21,11 @@ export async function setupQaFixtures(options: QaSetupOptions): Promise<QaFixtur
       providerUserId: key,
     });
 
-    const balance = await getBalance({ db: options.db, userId: user.id });
+    const balance = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: options.db,
+      userId: user.id,
+    });
 
     if (balance.availableAmountMicro < minimumRepMicro) {
       const amountMicro = minimumRepMicro - balance.availableAmountMicro;
@@ -35,6 +39,7 @@ export async function setupQaFixtures(options: QaSetupOptions): Promise<QaFixtur
 
       await ensureSeedRepGrant({
         amountMicro,
+        communityId: DEFAULT_COMMUNITY_ID,
         db: options.db,
         idempotencyKey,
         metadata: {

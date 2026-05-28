@@ -1,5 +1,5 @@
 import { createBinaryMarket, openMarket } from "@habit-gamba/contracts";
-import { createDbClient, createId, schema } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createDbClient, createId, schema } from "@habit-gamba/db";
 import { createMetricsRegistry, type Logger } from "@habit-gamba/logger";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -26,6 +26,7 @@ maybeDescribe("market lifecycle worker integration", () => {
     const now = new Date();
     const creatorId = await insertUser("due-now");
     const { market } = await createBinaryMarket({
+      communityId: DEFAULT_COMMUNITY_ID,
       creatorUserId: creatorId,
       db: client.db,
       slug: `worker-test-due-now-${createId().toLowerCase()}`,

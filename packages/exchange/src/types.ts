@@ -67,6 +67,7 @@ export type ExchangeQuoteSellForRepInput = Omit<ExchangeQuoteBuyInput, "amountMi
 };
 
 export type ExchangeListPositionsInput = {
+  communityId: string;
   db: DbClient;
   limit?: number;
   userId: string;

@@ -1,5 +1,11 @@
 import { closeMarket, createBinaryMarket, openMarket, voidMarket } from "@habit-gamba/contracts";
-import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
+import {
+  DEFAULT_COMMUNITY_ID,
+  createDbClient,
+  createId,
+  repToMicro,
+  schema,
+} from "@habit-gamba/db";
 import { creditRep, getBalance, InsufficientFundsError } from "@habit-gamba/wallet";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -61,7 +67,7 @@ maybeDescribe("exchange buy flow", () => {
       outcome: "YES",
       userId,
     });
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
     const [updatedContract] = await client.db
       .select()
       .from(schema.contracts)
@@ -98,7 +104,11 @@ maybeDescribe("exchange buy flow", () => {
       sharesMicro: repToMicro(3n),
       userId,
     });
-    const positions = await exchange.listPositions({ db: client.db, userId });
+    const positions = await exchange.listPositions({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId,
+    });
 
     expect(result.quote.costMicro).toBe(quote.costMicro);
     expect(result.quote.sharesMicro).toBe(quote.sharesMicro);
@@ -245,7 +255,7 @@ maybeDescribe("exchange buy flow", () => {
 
     const first = await exchange.buy(input);
     const second = await exchange.buy(input);
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
 
     expect(second.idempotent).toBe(true);
     expect(second.trade.id).toBe(first.trade.id);
@@ -350,7 +360,11 @@ maybeDescribe("exchange buy flow", () => {
       outcome: "YES",
       userId,
     });
-    const balanceAfterBuy = await getBalance({ db: client.db, userId });
+    const balanceAfterBuy = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId,
+    });
     const quote = await exchange.quoteSell({
       contractId: yesContract.id,
       db: client.db,
@@ -368,7 +382,11 @@ maybeDescribe("exchange buy flow", () => {
       sharesMicro: repToMicro(1n),
       userId,
     });
-    const balanceAfterSell = await getBalance({ db: client.db, userId });
+    const balanceAfterSell = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId,
+    });
 
     expect(sell.trade.side).toBe("sell");
     expect(sell.trade.cashDeltaMicro).toBe(quote.costMicro);
@@ -481,6 +499,7 @@ maybeDescribe("exchange buy flow", () => {
 
   async function createOpenMarket(creatorUserId: string, label: string) {
     const { market } = await createBinaryMarket({
+      communityId: DEFAULT_COMMUNITY_ID,
       creatorUserId,
       db: client.db,
       slug: `exchange-test-${label}-${createId().toLowerCase()}`,
@@ -497,6 +516,7 @@ maybeDescribe("exchange buy flow", () => {
 
   async function fundUser(userId: string, amountMicro: bigint, label: string) {
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro,
       db: client.db,
       idempotencyKey: `exchange-test:${userId}:fund:${label}`,

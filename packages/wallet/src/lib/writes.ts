@@ -61,7 +61,7 @@ async function writeRep(
       return getIdempotentResult(input, existingLedgerEntry, write);
     }
 
-    const balance = await ensureLockedRepBalance(tx, input.userId);
+    const balance = await ensureLockedRepBalance(tx, input);
     const lockedExistingLedgerEntry = await findExistingLedgerEntry(tx, input.idempotencyKey);
 
     if (lockedExistingLedgerEntry) {
@@ -86,7 +86,11 @@ async function writeRep(
         updatedAt: new Date(),
       })
       .where(
-        and(eq(schema.balances.userId, input.userId), eq(schema.balances.currency, REP_CURRENCY)),
+        and(
+          eq(schema.balances.userId, input.userId),
+          eq(schema.balances.currency, REP_CURRENCY),
+          eq(schema.balances.communityId, input.communityId),
+        ),
       )
       .returning();
 
@@ -99,6 +103,7 @@ async function writeRep(
       .values({
         amountDeltaMicro: write.amountDeltaMicro,
         balanceAfterMicro: nextAvailableAmountMicro,
+        communityId: input.communityId,
         currency: REP_CURRENCY,
         id: createId(),
         idempotencyKey: input.idempotencyKey,

@@ -82,12 +82,16 @@ describe("bot market utilities", () => {
         id: "thread-1",
         isThread: () => true,
       },
+      guild: { name: "Guild" },
+      guildId: "guild-1",
     };
     const channelInteraction = {
       channel: {
         id: "channel-1",
         isThread: () => false,
       },
+      guild: { name: "Guild" },
+      guildId: "guild-1",
     };
 
     await expect(

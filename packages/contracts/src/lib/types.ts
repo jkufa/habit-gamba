@@ -19,6 +19,7 @@ export type CreateBinaryMarketInput = MarketDbInput & {
   id?: string;
   yesContractId?: string;
   noContractId?: string;
+  communityId: string;
   creatorUserId: string;
   slug: string;
   title: string;
@@ -52,6 +53,7 @@ export type GetMarketByIdInput = MarketDbInput & {
 };
 
 export type GetMarketBySlugInput = MarketDbInput & {
+  communityId: string;
   slug: string;
 };
 
@@ -61,6 +63,7 @@ export type MarketListCursor = {
 };
 
 export type ListMarketsInput = MarketDbInput & {
+  communityId?: string;
   cursor?: MarketListCursor;
   limit?: number;
   creatorUserId?: string;

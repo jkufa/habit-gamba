@@ -1,4 +1,4 @@
-import { createDbClient, createId, schema } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createDbClient, createId, schema } from "@habit-gamba/db";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -91,12 +91,14 @@ maybeDescribe("users lifecycle", () => {
     });
 
     const first = await ensureSeedRepGrant({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro,
       db: client.db,
       idempotencyKey: `grant:${userId}`,
       userId,
     });
     const second = await ensureSeedRepGrant({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro,
       db: client.db,
       idempotencyKey: `grant:${userId}`,

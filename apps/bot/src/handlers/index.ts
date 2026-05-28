@@ -7,7 +7,7 @@ import { canViewAdminHelp, handleGlossary, handleHelp } from "./help";
 import { handleLeaderboard } from "./leaderboard";
 import { handleMarket, handleMarketButton, handleMarketModal } from "./market";
 import { handlePosition } from "./position";
-import { formatMarketAutocompleteChoice } from "./utils";
+import { formatMarketAutocompleteChoice, requireDiscordCommunity } from "./utils";
 import { glossaryTermChoices, helpTopicChoices } from "../help-content";
 import type { BotHandlerContext } from "./context";
 
@@ -34,10 +34,12 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
 
     const user = await getDiscordUser({
       ...context.services,
+      community: requireDiscordCommunity(interaction),
       discordUserId: interaction.user.id,
     });
     const actor = user
       ? {
+          community: requireDiscordCommunity(interaction),
           discordUserId: interaction.user.id,
           userId: user.id,
         }
@@ -45,6 +47,7 @@ export async function handleInteraction(context: BotHandlerContext, interaction:
     const subcommand = interaction.options.getSubcommand(false);
     const autocompleteInput = {
       ...context.services,
+      community: requireDiscordCommunity(interaction),
       query: String(focused.value),
       ...(actor ? { actor } : {}),
       ...(subcommand ? { subcommand } : {}),

@@ -1,4 +1,10 @@
-import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
+import {
+  DEFAULT_COMMUNITY_ID,
+  createDbClient,
+  createId,
+  repToMicro,
+  schema,
+} from "@habit-gamba/db";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -32,6 +38,7 @@ maybeDescribe("wallet REP ledger", () => {
     const userId = await createTestUser(client.db);
 
     const result = await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(10n),
       db: client.db,
       idempotencyKey: `wallet-test:${userId}:credit`,
@@ -40,7 +47,7 @@ maybeDescribe("wallet REP ledger", () => {
       userId,
     });
 
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
     const ledgerRows = await client.db.select().from(schema.ledgerEntries);
 
     expect(result.idempotent).toBe(false);
@@ -55,6 +62,7 @@ maybeDescribe("wallet REP ledger", () => {
 
     await expect(
       debitRep({
+        communityId: DEFAULT_COMMUNITY_ID,
         amountMicro: 1n,
         db: client.db,
         idempotencyKey: `wallet-test:${userId}:debit-too-much`,
@@ -64,7 +72,7 @@ maybeDescribe("wallet REP ledger", () => {
       }),
     ).rejects.toThrow(InsufficientFundsError);
 
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
     const userLedgerRows = (await client.db.select().from(schema.ledgerEntries)).filter(
       (entry) => entry.userId === userId,
     );
@@ -77,12 +85,14 @@ maybeDescribe("wallet REP ledger", () => {
     const userId = await createTestUser(client.db);
 
     await setRepCreditLimit({
+      communityId: DEFAULT_COMMUNITY_ID,
       creditLimitMicro: repToMicro(5n),
       db: client.db,
       userId,
     });
 
     await debitRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(5n),
       db: client.db,
       idempotencyKey: `wallet-test:${userId}:debit-to-limit`,
@@ -93,6 +103,7 @@ maybeDescribe("wallet REP ledger", () => {
 
     await expect(
       debitRep({
+        communityId: DEFAULT_COMMUNITY_ID,
         amountMicro: 1n,
         db: client.db,
         idempotencyKey: `wallet-test:${userId}:debit-past-limit`,
@@ -102,7 +113,7 @@ maybeDescribe("wallet REP ledger", () => {
       }),
     ).rejects.toThrow(InsufficientFundsError);
 
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
 
     expect(balance.availableAmountMicro).toBe(-repToMicro(5n));
     expect(balance.creditLimitMicro).toBe(repToMicro(5n));
@@ -114,6 +125,7 @@ maybeDescribe("wallet REP ledger", () => {
     const sourceId = createId();
     const input = {
       amountMicro: repToMicro(3n),
+      communityId: DEFAULT_COMMUNITY_ID,
       db: client.db,
       idempotencyKey,
       metadata: { request: "same" },
@@ -124,7 +136,7 @@ maybeDescribe("wallet REP ledger", () => {
 
     const first = await creditRep(input);
     const second = await creditRep(input);
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
     const userLedgerRows = (await client.db.select().from(schema.ledgerEntries)).filter(
       (entry) => entry.userId === userId,
     );
@@ -141,6 +153,7 @@ maybeDescribe("wallet REP ledger", () => {
     const sourceId = createId();
     const input = {
       amountMicro: repToMicro(2n),
+      communityId: DEFAULT_COMMUNITY_ID,
       db: client.db,
       idempotencyKey,
       sourceId,
@@ -149,7 +162,7 @@ maybeDescribe("wallet REP ledger", () => {
     };
 
     const results = await Promise.all([creditRep(input), creditRep(input)]);
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
     const userLedgerRows = (await client.db.select().from(schema.ledgerEntries)).filter(
       (entry) => entry.userId === userId,
     );
@@ -164,6 +177,7 @@ maybeDescribe("wallet REP ledger", () => {
     const idempotencyKey = `wallet-test:${userId}:conflict`;
 
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(3n),
       db: client.db,
       idempotencyKey,
@@ -174,6 +188,7 @@ maybeDescribe("wallet REP ledger", () => {
 
     await expect(
       creditRep({
+        communityId: DEFAULT_COMMUNITY_ID,
         amountMicro: repToMicro(4n),
         db: client.db,
         idempotencyKey,
@@ -188,6 +203,7 @@ maybeDescribe("wallet REP ledger", () => {
     const userId = await createTestUser(client.db);
 
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(10n),
       db: client.db,
       idempotencyKey: `wallet-test:${userId}:fund-concurrent`,
@@ -198,6 +214,7 @@ maybeDescribe("wallet REP ledger", () => {
 
     const debits = await Promise.allSettled([
       debitRep({
+        communityId: DEFAULT_COMMUNITY_ID,
         amountMicro: repToMicro(10n),
         db: client.db,
         idempotencyKey: `wallet-test:${userId}:concurrent-debit-a`,
@@ -206,6 +223,7 @@ maybeDescribe("wallet REP ledger", () => {
         userId,
       }),
       debitRep({
+        communityId: DEFAULT_COMMUNITY_ID,
         amountMicro: repToMicro(10n),
         db: client.db,
         idempotencyKey: `wallet-test:${userId}:concurrent-debit-b`,
@@ -217,7 +235,7 @@ maybeDescribe("wallet REP ledger", () => {
 
     const fulfilled = debits.filter((debit) => debit.status === "fulfilled");
     const rejected = debits.filter((debit) => debit.status === "rejected");
-    const balance = await getBalance({ db: client.db, userId });
+    const balance = await getBalance({ communityId: DEFAULT_COMMUNITY_ID, db: client.db, userId });
 
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);

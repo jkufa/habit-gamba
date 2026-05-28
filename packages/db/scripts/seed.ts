@@ -2,8 +2,17 @@ import { loadBaseEnv } from "@habit-gamba/env";
 import { eq, sql } from "drizzle-orm";
 
 import { createDbClient } from "../src/client";
+import { DEFAULT_COMMUNITY_ID } from "../src/community";
 import { repToMicro } from "../src/currency";
-import { balances, contracts, ledgerEntries, markets, users } from "../src/schema";
+import {
+  balances,
+  communities,
+  communityMemberships,
+  contracts,
+  ledgerEntries,
+  markets,
+  users,
+} from "../src/schema";
 import type { DbClient } from "../src/client";
 
 const seedUsers = [
@@ -41,6 +50,18 @@ const seedUsers = [
 
 export async function seedDatabase(db: DbClient) {
   await db.transaction(async (tx) => {
+    await tx
+      .insert(communities)
+      .values({
+        displayName: "Habit Gamba",
+        id: DEFAULT_COMMUNITY_ID,
+        metadata: { default: true, seed: true },
+        provider: "system",
+        providerCommunityId: "default",
+        slug: "habit-gamba",
+      })
+      .onConflictDoNothing();
+
     for (const user of seedUsers) {
       await tx
         .insert(users)
@@ -65,6 +86,7 @@ export async function seedDatabase(db: DbClient) {
       await tx
         .insert(balances)
         .values({
+          communityId: DEFAULT_COMMUNITY_ID,
           id: user.balanceId,
           userId: user.id,
           availableAmountMicro: user.grant,
@@ -74,14 +96,27 @@ export async function seedDatabase(db: DbClient) {
       await tx
         .insert(ledgerEntries)
         .values({
-          id: user.grantLedgerId,
           amountDeltaMicro: user.grant,
           balanceAfterMicro: user.grant,
+          communityId: DEFAULT_COMMUNITY_ID,
+          id: user.grantLedgerId,
           idempotencyKey: `seed:user:${user.providerUserId}:grant`,
           metadata: { seed: true },
           reason: "seed_grant",
           sourceId: user.id,
           sourceType: "seed_user_grant",
+          userId: user.id,
+        })
+        .onConflictDoNothing();
+
+      await tx
+        .insert(communityMemberships)
+        .values({
+          communityId: DEFAULT_COMMUNITY_ID,
+          displayNameSnapshot: user.displayName,
+          id: `${user.id}:default-membership`,
+          metadata: { seed: true },
+          providerMemberId: user.providerUserId,
           userId: user.id,
         })
         .onConflictDoNothing();
@@ -95,6 +130,7 @@ export async function seedDatabase(db: DbClient) {
               from ${ledgerEntries}
               where ${ledgerEntries.userId} = ${user.id}
                 and ${ledgerEntries.currency} = ${balances.currency}
+                and ${ledgerEntries.communityId} = ${balances.communityId}
             )
           `,
           updatedAt: new Date(),
@@ -107,6 +143,7 @@ export async function seedDatabase(db: DbClient) {
       .values({
         id: "01KRS1ETXBNDAJD2KZT4TTHT62",
         closesAt: new Date("2027-01-01T00:00:00.000Z"),
+        communityId: DEFAULT_COMMUNITY_ID,
         creatorUserId: "01KRS1E7CZHGTQQ5N7Y7KD31Z7",
         description: "Demo binary habit market for local development.",
         liquidityParameterMicro: repToMicro(100n),
@@ -117,7 +154,7 @@ export async function seedDatabase(db: DbClient) {
         title: "Will Demo User complete today's habit?",
       })
       .onConflictDoUpdate({
-        target: markets.slug,
+        target: [markets.communityId, markets.slug],
         set: {
           closesAt: new Date("2027-01-01T00:00:00.000Z"),
           description: "Demo binary habit market for local development.",

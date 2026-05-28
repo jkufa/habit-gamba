@@ -32,6 +32,7 @@ export async function checkRepLedgerInvariant(
         and(
           eq(schema.ledgerEntries.userId, balance.userId),
           eq(schema.ledgerEntries.currency, REP_CURRENCY),
+          sql`${schema.ledgerEntries.communityId} is not distinct from ${balance.communityId}`,
         ),
       );
 
@@ -41,6 +42,7 @@ export async function checkRepLedgerInvariant(
     if (deltaMicro !== 0n) {
       mismatches.push({
         cachedAvailableAmountMicro: balance.availableAmountMicro,
+        communityId: balance.communityId,
         currency: REP_CURRENCY,
         deltaMicro,
         ledgerAmountMicro,
@@ -79,15 +81,15 @@ export async function checkWalletInvariant(input: InvariantCheckInput): Promise<
               userIds ? inArray(schema.ledgerEntries.userId, userIds) : undefined,
             ),
           );
-  const balancesByUserId = new Map(balanceRows.map((balance) => [balance.userId, balance]));
+  const balancesByKey = new Map(balanceRows.map((balance) => [balanceKey(balance), balance]));
   const ledgerTotalsByUserId = new Map<string, bigint>();
   const idempotencyOwners = new Map<string, string>();
   const sourceOwners = new Map<string, string>();
 
   for (const ledgerEntry of ledgerRows) {
     ledgerTotalsByUserId.set(
-      ledgerEntry.userId,
-      (ledgerTotalsByUserId.get(ledgerEntry.userId) ?? 0n) + ledgerEntry.amountDeltaMicro,
+      ledgerKey(ledgerEntry),
+      (ledgerTotalsByUserId.get(ledgerKey(ledgerEntry)) ?? 0n) + ledgerEntry.amountDeltaMicro,
     );
 
     pushDuplicateFailure({
@@ -102,14 +104,14 @@ export async function checkWalletInvariant(input: InvariantCheckInput): Promise<
       code: "duplicate_ledger_source",
       entityId: ledgerEntry.id,
       failures,
-      key: `${ledgerEntry.sourceType}:${ledgerEntry.sourceId}:${ledgerEntry.userId}`,
+      key: `${ledgerEntry.sourceType}:${ledgerEntry.sourceId}:${ledgerEntry.userId}:${ledgerEntry.communityId}`,
       message: "Ledger source tuple is not unique",
       owners: sourceOwners,
     });
   }
 
   for (const balance of balanceRows) {
-    const ledgerAmountMicro = ledgerTotalsByUserId.get(balance.userId) ?? 0n;
+    const ledgerAmountMicro = ledgerTotalsByUserId.get(balanceKey(balance)) ?? 0n;
     const deltaMicro = balance.availableAmountMicro - ledgerAmountMicro;
 
     if (deltaMicro !== 0n) {
@@ -119,6 +121,7 @@ export async function checkWalletInvariant(input: InvariantCheckInput): Promise<
         message: "Cached available balance does not equal ledger sum",
         details: {
           cachedAvailableAmountMicro: balance.availableAmountMicro,
+          communityId: balance.communityId,
           deltaMicro,
           ledgerAmountMicro,
           userId: balance.userId,
@@ -149,18 +152,27 @@ export async function checkWalletInvariant(input: InvariantCheckInput): Promise<
     }
   }
 
-  for (const [userId, ledgerAmountMicro] of ledgerTotalsByUserId) {
-    if (!balancesByUserId.has(userId) && ledgerAmountMicro !== 0n) {
+  for (const [key, ledgerAmountMicro] of ledgerTotalsByUserId) {
+    if (!balancesByKey.has(key) && ledgerAmountMicro !== 0n) {
+      const [userId = "unknown", communityId = "unknown"] = key.split(":");
       failures.push({
         code: "wallet_ledger_without_balance",
         entity: { id: userId, type: "user" },
         message: "Ledger entries exist for user without cached balance row",
-        details: { ledgerAmountMicro, userId },
+        details: { communityId, ledgerAmountMicro, userId },
       });
     }
   }
 
   return toReport("wallet", failures);
+}
+
+function balanceKey(balance: typeof schema.balances.$inferSelect): string {
+  return `${balance.userId}:${balance.communityId}`;
+}
+
+function ledgerKey(ledgerEntry: typeof schema.ledgerEntries.$inferSelect): string {
+  return `${ledgerEntry.userId}:${ledgerEntry.communityId}`;
 }
 
 async function resolveUserIds(input: InvariantCheckInput): Promise<string[] | undefined> {

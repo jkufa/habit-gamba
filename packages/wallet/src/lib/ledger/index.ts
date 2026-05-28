@@ -27,6 +27,7 @@ export function isSameLedgerPayload(
 ): boolean {
   return (
     ledgerEntry.userId === input.userId &&
+    ledgerEntry.communityId === input.communityId &&
     ledgerEntry.currency === REP_CURRENCY &&
     ledgerEntry.amountDeltaMicro === write.amountDeltaMicro &&
     ledgerEntry.reason === write.reason &&

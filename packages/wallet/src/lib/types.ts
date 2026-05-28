@@ -13,20 +13,22 @@ export type WalletDbInput = {
 };
 
 export type RepWriteInput = WalletDbInput & {
-  userId: string;
   amountMicro: bigint;
+  communityId: string;
   idempotencyKey: string;
-  sourceType: string;
-  sourceId: string;
   metadata?: Record<string, unknown>;
+  sourceId: string;
+  sourceType: string;
+  userId: string;
 };
 
 export type RepBalance = {
-  userId: string;
+  communityId: string | null;
   currency: typeof REP_CURRENCY;
   availableAmountMicro: bigint;
   lockedAmountMicro: bigint;
   creditLimitMicro: bigint;
+  userId: string;
 };
 
 export type WalletWriteResult = {
@@ -37,6 +39,7 @@ export type WalletWriteResult = {
 
 export type RepLedgerInvariantMismatch = {
   userId: string;
+  communityId: string | null;
   currency: typeof REP_CURRENCY;
   cachedAvailableAmountMicro: bigint;
   ledgerAmountMicro: bigint;

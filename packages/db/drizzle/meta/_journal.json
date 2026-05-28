@@ -64,6 +64,13 @@
       "when": 1779021500000,
       "tag": "0008_recurring_market_series",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779021600000,
+      "tag": "0009_community_scopes",
+      "breakpoints": true
     }
   ]
 }

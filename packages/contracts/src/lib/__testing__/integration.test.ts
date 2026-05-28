@@ -1,4 +1,4 @@
-import { createDbClient, createId, schema } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createDbClient, createId, schema } from "@habit-gamba/db";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -37,6 +37,7 @@ maybeDescribe("contract market lifecycle", () => {
     const slug = `market-${createId().toLowerCase()}`;
 
     const first = await createBinaryMarket({
+      communityId: DEFAULT_COMMUNITY_ID,
       creatorUserId,
       db: client.db,
       description: "Lifecycle market",
@@ -44,6 +45,7 @@ maybeDescribe("contract market lifecycle", () => {
       title: "Will this lifecycle market exist?",
     });
     const second = await createBinaryMarket({
+      communityId: DEFAULT_COMMUNITY_ID,
       creatorUserId,
       db: client.db,
       description: "Lifecycle market",
@@ -62,6 +64,7 @@ maybeDescribe("contract market lifecycle", () => {
 
     await expect(
       createBinaryMarket({
+        communityId: DEFAULT_COMMUNITY_ID,
         creatorUserId,
         db: client.db,
         description: "Changed",
@@ -71,7 +74,11 @@ maybeDescribe("contract market lifecycle", () => {
     ).rejects.toThrow(MarketConflictError);
 
     const byId = await getMarketById({ db: client.db, marketId: first.market.id });
-    const bySlug = await getMarketBySlug({ db: client.db, slug });
+    const bySlug = await getMarketBySlug({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      slug,
+    });
 
     expect(byId?.id).toBe(first.market.id);
     expect(bySlug?.id).toBe(first.market.id);
@@ -81,6 +88,7 @@ maybeDescribe("contract market lifecycle", () => {
     const creatorUserId = await insertCreator();
     const slug = `transition-${createId().toLowerCase()}`;
     const { market } = await createBinaryMarket({
+      communityId: DEFAULT_COMMUNITY_ID,
       creatorUserId,
       db: client.db,
       slug,

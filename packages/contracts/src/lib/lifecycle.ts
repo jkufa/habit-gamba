@@ -25,7 +25,12 @@ export async function createBinaryMarket(
   input: CreateBinaryMarketInput,
 ): Promise<CreateBinaryMarketResult> {
   return withTransaction(input, async (tx) => {
-    const existingMarket = await getMarketBySlug({ db: input.db, slug: input.slug, tx });
+    const existingMarket = await getMarketBySlug({
+      communityId: input.communityId,
+      db: input.db,
+      slug: input.slug,
+      tx,
+    });
 
     if (existingMarket) {
       assertSameCreatePayload(input, existingMarket);
@@ -41,6 +46,7 @@ export async function createBinaryMarket(
       .insert(schema.markets)
       .values({
         creatorUserId: input.creatorUserId,
+        communityId: input.communityId,
         description: input.description ?? null,
         id: marketId,
         liquidityParameterMicro: 0n,
@@ -216,6 +222,7 @@ function assertSameCreatePayload(input: CreateBinaryMarketInput, market: MarketW
 
   if (
     market.creatorUserId !== input.creatorUserId ||
+    market.communityId !== input.communityId ||
     market.description !== (input.description ?? null) ||
     market.title !== input.title ||
     yesContract.outcome !== "YES" ||

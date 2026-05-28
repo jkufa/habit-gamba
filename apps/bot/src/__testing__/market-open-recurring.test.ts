@@ -219,6 +219,8 @@ function chatInputInteraction(input: { market: string | null; recurring: boolean
       getSubcommand: vi.fn(() => "open"),
       getSubcommandGroup: vi.fn(() => null),
     },
+    guild: { name: "Guild" },
+    guildId: "guild-1",
     reply: vi.fn(),
     user: { id: "discord-1" },
   } as unknown as ChatInputCommandInteraction & { reply: ReturnType<typeof vi.fn> };

@@ -3,21 +3,31 @@ import { and, eq } from "drizzle-orm";
 
 import type { Balance, WalletExecutor } from "../types";
 
-export async function ensureLockedRepBalance(tx: WalletExecutor, userId: string): Promise<Balance> {
+export async function ensureLockedRepBalance(
+  tx: WalletExecutor,
+  input: { communityId: string; userId: string },
+): Promise<Balance> {
   await tx
     .insert(schema.balances)
     .values({
+      communityId: input.communityId,
       id: createId(),
-      userId,
+      userId: input.userId,
     })
     .onConflictDoNothing({
-      target: [schema.balances.userId, schema.balances.currency],
+      target: [schema.balances.userId, schema.balances.currency, schema.balances.communityId],
     });
 
   const [balance] = await tx
     .select()
     .from(schema.balances)
-    .where(and(eq(schema.balances.userId, userId), eq(schema.balances.currency, REP_CURRENCY)))
+    .where(
+      and(
+        eq(schema.balances.userId, input.userId),
+        eq(schema.balances.currency, REP_CURRENCY),
+        eq(schema.balances.communityId, input.communityId),
+      ),
+    )
     .for("update")
     .limit(1);
 

@@ -1,5 +1,5 @@
 import { createBinaryMarket, openMarket } from "@habit-gamba/contracts";
-import { repToMicro } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, repToMicro } from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { cancelMarket, resolveMarket } from "@habit-gamba/resolution";
 import type { DbClient } from "@habit-gamba/db";
@@ -41,6 +41,7 @@ function buildHappyPath(input: { db: DbClient; fixture: QaFixture; qaRunId: stri
       name: "create-market",
       run: async () => {
         const { market } = await createBinaryMarket({
+          communityId: DEFAULT_COMMUNITY_ID,
           creatorUserId: input.fixture.users[0]?.id ?? fail("missing QA creator"),
           db: input.db,
           metadata: qaMarketMetadata(input.qaRunId, "happy-path"),
@@ -114,6 +115,7 @@ function buildCancellation(input: {
       name: "create-market",
       run: async () => {
         const { market } = await createBinaryMarket({
+          communityId: DEFAULT_COMMUNITY_ID,
           creatorUserId: input.fixture.users[0]?.id ?? fail("missing QA creator"),
           db: input.db,
           metadata: qaMarketMetadata(input.qaRunId, "cancellation"),
@@ -197,6 +199,7 @@ function buildStress(input: {
       name: `stress-${index}-create-market`,
       run: async () => {
         const { market } = await createBinaryMarket({
+          communityId: DEFAULT_COMMUNITY_ID,
           creatorUserId:
             input.fixture.users[index % input.fixture.users.length]?.id ?? fail("missing QA user"),
           db: input.db,
@@ -305,6 +308,7 @@ function buildTradeStress(input: {
       name: "trade-stress-create-market",
       run: async () => {
         const { market } = await createBinaryMarket({
+          communityId: DEFAULT_COMMUNITY_ID,
           creatorUserId: input.fixture.users[0]?.id ?? fail("missing QA creator"),
           db: input.db,
           metadata: qaMarketMetadata(input.qaRunId, "trade-stress"),

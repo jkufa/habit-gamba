@@ -1,4 +1,4 @@
-import { createId, insertEvent, schema } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createId, insertEvent, schema } from "@habit-gamba/db";
 import { payoutRep, penalizeRep, refundRep } from "@habit-gamba/wallet";
 import { and, asc, eq, inArray, lte, notInArray, or, sql } from "drizzle-orm";
 
@@ -64,6 +64,7 @@ export async function resolveMarket(input: ResolveMarketInput): Promise<ResolveM
       .sort((left, right) => left.userId.localeCompare(right.userId))) {
       const result = await payoutRep({
         amountMicro: position.quantityMicro,
+        communityId: marketCommunityId(loaded.market),
         db: input.db,
         idempotencyKey: `resolve:${input.marketId}:payout:${position.userId}`,
         metadata: {
@@ -164,6 +165,7 @@ export async function cancelMarket(input: CancelMarketInput): Promise<CancelMark
     for (const refund of refundRows) {
       const result = await refundRep({
         amountMicro: refund.amountMicro,
+        communityId: marketCommunityId(loaded.market),
         db: input.db,
         idempotencyKey: `cancel:${input.marketId}:refund:${refund.userId}`,
         metadata: {
@@ -181,6 +183,7 @@ export async function cancelMarket(input: CancelMarketInput): Promise<CancelMark
     if (creatorPenaltyMicro > 0n) {
       const result = await penalizeRep({
         amountMicro: creatorPenaltyMicro,
+        communityId: marketCommunityId(loaded.market),
         db: input.db,
         idempotencyKey: `cancel:${input.marketId}:creator-penalty`,
         metadata: {
@@ -655,6 +658,10 @@ function normalizePenaltyBps(input: ResolutionConfig): number {
 
 function calculatePenalty(refundTotalMicro: bigint, penaltyBps: number): bigint {
   return (refundTotalMicro * BigInt(penaltyBps)) / BPS_DENOMINATOR;
+}
+
+function marketCommunityId(market: Market): string {
+  return market.communityId ?? DEFAULT_COMMUNITY_ID;
 }
 
 function normalizeLimit(limit: number | undefined): number {

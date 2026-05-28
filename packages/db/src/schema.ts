@@ -31,6 +31,7 @@ export const ledgerReasonEnum = pgEnum("ledger_reason", [
 ]);
 export const resolutionKindEnum = pgEnum("resolution_kind", ["manual", "oracle"]);
 export const userStatusEnum = pgEnum("user_status", ["active", "deactivated"]);
+export const roleScopeTypeEnum = pgEnum("role_scope_type", ["global", "community"]);
 export const eventDeliveryStatusEnum = pgEnum("event_delivery_status", [
   "pending",
   "processing",
@@ -90,6 +91,51 @@ export const users = pgTable(
   ],
 );
 
+export const communities = pgTable(
+  "communities",
+  {
+    id: idColumn(),
+    provider: text("provider").notNull(),
+    providerCommunityId: text("provider_community_id").notNull(),
+    slug: text("slug").notNull(),
+    displayName: text("display_name").notNull(),
+    metadata: metadataColumn(),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
+  },
+  (table) => [
+    unique("communities_provider_community_unique").on(table.provider, table.providerCommunityId),
+    unique("communities_slug_unique").on(table.slug),
+  ],
+);
+
+export const communityMemberships = pgTable(
+  "community_memberships",
+  {
+    id: idColumn(),
+    communityId: text("community_id")
+      .notNull()
+      .references(() => communities.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    providerMemberId: text("provider_member_id").notNull(),
+    displayNameSnapshot: text("display_name_snapshot"),
+    metadata: metadataColumn(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAtColumn(),
+    updatedAt: updatedAtColumn(),
+  },
+  (table) => [
+    unique("community_memberships_community_user_unique").on(table.communityId, table.userId),
+    unique("community_memberships_community_provider_member_unique").on(
+      table.communityId,
+      table.providerMemberId,
+    ),
+    index("community_memberships_user_idx").on(table.userId),
+  ],
+);
+
 export const userRoles = pgTable(
   "user_roles",
   {
@@ -98,13 +144,21 @@ export const userRoles = pgTable(
       .notNull()
       .references(() => users.id),
     role: text("role").notNull(),
+    scopeType: roleScopeTypeEnum("scope_type").notNull().default("global"),
+    scopeId: text("scope_id").notNull().default("*"),
     createdAt: createdAtColumn(),
     updatedAt: updatedAtColumn(),
   },
   (table) => [
-    unique("user_roles_user_role_unique").on(table.userId, table.role),
+    unique("user_roles_user_role_scope_unique").on(
+      table.userId,
+      table.role,
+      table.scopeType,
+      table.scopeId,
+    ),
     index("user_roles_user_idx").on(table.userId),
     index("user_roles_role_idx").on(table.role),
+    index("user_roles_scope_idx").on(table.scopeType, table.scopeId),
   ],
 );
 
@@ -115,6 +169,7 @@ export const balances = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
+    communityId: text("community_id").references(() => communities.id),
     currency: currencyEnum("currency").notNull().default("REP"),
     availableAmountMicro: bigint("available_amount_micro", { mode: "bigint" })
       .notNull()
@@ -129,7 +184,11 @@ export const balances = pgTable(
     updatedAt: updatedAtColumn(),
   },
   (table) => [
-    unique("balances_user_currency_unique").on(table.userId, table.currency),
+    unique("balances_user_currency_community_unique").on(
+      table.userId,
+      table.currency,
+      table.communityId,
+    ),
     check("balances_locked_nonnegative", sql`${table.lockedAmountMicro} >= 0`),
     check("balances_credit_limit_nonnegative", sql`${table.creditLimitMicro} >= 0`),
     check(
@@ -146,6 +205,7 @@ export const markets = pgTable(
     creatorUserId: text("creator_user_id")
       .notNull()
       .references(() => users.id),
+    communityId: text("community_id").references(() => communities.id),
     slug: text("slug").notNull(),
     title: text("title").notNull(),
     description: text("description"),
@@ -168,8 +228,9 @@ export const markets = pgTable(
     updatedAt: updatedAtColumn(),
   },
   (table) => [
-    unique("markets_slug_unique").on(table.slug),
+    unique("markets_community_slug_unique").on(table.communityId, table.slug),
     index("markets_creator_idx").on(table.creatorUserId),
+    index("markets_community_idx").on(table.communityId),
     index("markets_recurring_series_idx").on(table.recurringSeriesId),
     index("markets_status_idx").on(table.status),
     unique("markets_recurring_series_date_unique").on(
@@ -293,6 +354,7 @@ export const ledgerEntries = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
+    communityId: text("community_id").references(() => communities.id),
     currency: currencyEnum("currency").notNull().default("REP"),
     amountDeltaMicro: bigint("amount_delta_micro", { mode: "bigint" }).notNull(),
     balanceAfterMicro: bigint("balance_after_micro", { mode: "bigint" }).notNull(),
@@ -305,8 +367,17 @@ export const ledgerEntries = pgTable(
   },
   (table) => [
     unique("ledger_entries_idempotency_key_unique").on(table.idempotencyKey),
-    unique("ledger_entries_source_unique").on(table.sourceType, table.sourceId, table.userId),
-    index("ledger_entries_user_currency_idx").on(table.userId, table.currency),
+    unique("ledger_entries_source_community_unique").on(
+      table.sourceType,
+      table.sourceId,
+      table.userId,
+      table.communityId,
+    ),
+    index("ledger_entries_user_currency_community_idx").on(
+      table.userId,
+      table.currency,
+      table.communityId,
+    ),
   ],
 );
 

@@ -6,12 +6,18 @@ import { withTransaction } from "../transaction";
 import { ensureLockedRepBalance } from "./locking";
 import type { Balance, RepBalance, WalletDbInput } from "../types";
 
-export async function getBalance(input: WalletDbInput & { userId: string }): Promise<RepBalance> {
+export async function getBalance(
+  input: WalletDbInput & { communityId: string; userId: string },
+): Promise<RepBalance> {
   const [balance] = await input.db
     .select()
     .from(schema.balances)
     .where(
-      and(eq(schema.balances.userId, input.userId), eq(schema.balances.currency, REP_CURRENCY)),
+      and(
+        eq(schema.balances.userId, input.userId),
+        eq(schema.balances.currency, REP_CURRENCY),
+        eq(schema.balances.communityId, input.communityId),
+      ),
     )
     .limit(1);
 
@@ -20,6 +26,7 @@ export async function getBalance(input: WalletDbInput & { userId: string }): Pro
 
 export async function setRepCreditLimit(
   input: WalletDbInput & {
+    communityId: string;
     userId: string;
     creditLimitMicro: bigint;
   },
@@ -29,7 +36,7 @@ export async function setRepCreditLimit(
   }
 
   return withTransaction(input, async (tx) => {
-    const balance = await ensureLockedRepBalance(tx, input.userId);
+    const balance = await ensureLockedRepBalance(tx, input);
 
     if (balance.availableAmountMicro < -input.creditLimitMicro) {
       throw new InsufficientFundsError({
@@ -47,7 +54,11 @@ export async function setRepCreditLimit(
         updatedAt: new Date(),
       })
       .where(
-        and(eq(schema.balances.userId, input.userId), eq(schema.balances.currency, REP_CURRENCY)),
+        and(
+          eq(schema.balances.userId, input.userId),
+          eq(schema.balances.currency, REP_CURRENCY),
+          eq(schema.balances.communityId, input.communityId),
+        ),
       )
       .returning();
 
@@ -62,6 +73,7 @@ export async function setRepCreditLimit(
 export function toRepBalance(balance: Balance | undefined, userId: string): RepBalance {
   return {
     availableAmountMicro: balance?.availableAmountMicro ?? 0n,
+    communityId: balance?.communityId ?? null,
     creditLimitMicro: balance?.creditLimitMicro ?? 0n,
     currency: REP_CURRENCY,
     lockedAmountMicro: balance?.lockedAmountMicro ?? 0n,

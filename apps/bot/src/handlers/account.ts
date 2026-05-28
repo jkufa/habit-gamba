@@ -2,7 +2,7 @@ import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } f
 
 import { formatMicro } from "../money";
 import { getAccount, getDiscordUser, registerAccount, type DiscordIdentity } from "../service";
-import { requireActor } from "./utils";
+import { requireActor, requireDiscordCommunity } from "./utils";
 import type { BotHandlerContext } from "./context";
 
 export async function handleAccount(
@@ -14,6 +14,7 @@ export async function handleAccount(
   if (subcommand === "register") {
     const existingUser = await getDiscordUser({
       ...context.services,
+      community: requireDiscordCommunity(interaction),
       discordUserId: interaction.user.id,
     });
 
@@ -26,6 +27,7 @@ export async function handleAccount(
         : await getAccount({
             ...context.services,
             actor: {
+              community: requireDiscordCommunity(interaction),
               discordUserId: interaction.user.id,
               userId: existingUser.id,
             },
@@ -63,6 +65,7 @@ function getIdentity(interaction: ChatInputCommandInteraction): DiscordIdentity 
         ? interaction.member.displayName
         : (interaction.user.globalName ?? interaction.user.username),
     handle: interaction.user.username,
+    community: requireDiscordCommunity(interaction),
     isAdmin: isDiscordAdmin(interaction),
     userId: interaction.user.id,
   };

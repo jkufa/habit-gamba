@@ -22,6 +22,7 @@ import {
   getDiscordUser,
 } from "../service";
 import type { Actor } from "../permissions";
+import type { DiscordCommunity } from "../service";
 import type { BotHandlerContext } from "./context";
 
 export { getDiscordMetadata, marketEmbed };
@@ -62,6 +63,7 @@ export async function requireActor(
 ): Promise<RegisteredActor> {
   const user = await getDiscordUser({
     ...context.services,
+    community: requireDiscordCommunity(interaction),
     discordUserId: interaction.user.id,
   });
 
@@ -70,6 +72,7 @@ export async function requireActor(
   }
 
   return {
+    community: requireDiscordCommunity(interaction),
     displayName: user.displayName,
     discordUserId: interaction.user.id,
     handle: user.handle,
@@ -77,8 +80,31 @@ export async function requireActor(
   };
 }
 
-export async function resolveMarketId(context: BotHandlerContext, value: string) {
-  const matches = await autocompleteMarkets({ ...context.services, query: value });
+export function requireDiscordCommunity(interaction: {
+  guild?: { name: string } | null;
+  guildId: string | null;
+}): DiscordCommunity {
+  if (!interaction.guildId) {
+    throw new Error("Use this command in a server.");
+  }
+
+  return {
+    displayName: interaction.guild?.name ?? interaction.guildId,
+    provider: "discord",
+    providerCommunityId: interaction.guildId,
+  };
+}
+
+export async function resolveMarketId(
+  context: BotHandlerContext,
+  interaction: RepliableBotInteraction,
+  value: string,
+) {
+  const matches = await autocompleteMarkets({
+    ...context.services,
+    community: requireDiscordCommunity(interaction),
+    query: value,
+  });
   const exact = matches.find((market) => market.id === value || market.slug === value);
 
   return (exact ?? matches[0])?.id ?? value;
@@ -101,6 +127,7 @@ export async function resolveDefaultMarketValue(
 
   const market = await findMarketByDiscordThread({
     ...context.services,
+    community: requireDiscordCommunity(interaction),
     threadId: interaction.channel.id,
   });
 

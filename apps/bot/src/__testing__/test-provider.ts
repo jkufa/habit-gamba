@@ -22,6 +22,11 @@ import {
 
 const BOT_API_BASE_URL = "https://bot-api.test";
 const BOT_API_TOKEN = "bot-api-test-token";
+const testCommunity = {
+  displayName: "Bot Test Guild",
+  provider: "discord" as const,
+  providerCommunityId: "bot-test-guild",
+};
 
 export type BotApiTestAccount = {
   actor: Actor;
@@ -147,6 +152,7 @@ function createProvider(services: BotServices) {
     viewMarket: (marketId: string): Promise<BotMarket> =>
       viewMarketCommand({
         ...services,
+        community: testCommunity,
         marketId,
       }),
   };
@@ -155,6 +161,7 @@ function createProvider(services: BotServices) {
 async function createAccount(services: BotServices, label: string): Promise<BotApiTestAccount> {
   const id = createId().toLowerCase();
   const identity: DiscordIdentity = {
+    community: testCommunity,
     displayName: `Bot Test ${label}`,
     handle: `bot-${label}-${id}`,
     userId: `bot-test-${label}-${id}`,
@@ -163,6 +170,7 @@ async function createAccount(services: BotServices, label: string): Promise<BotA
   const registration = await registerAccount({ ...services, identity });
   const user = await getDiscordUser({
     ...services,
+    community: testCommunity,
     discordUserId: identity.userId,
   });
 
@@ -172,6 +180,7 @@ async function createAccount(services: BotServices, label: string): Promise<BotA
 
   return {
     actor: {
+      community: testCommunity,
       discordUserId: identity.userId,
       userId: user.id,
     },

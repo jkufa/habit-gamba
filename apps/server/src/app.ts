@@ -15,10 +15,13 @@ import { scheduleMarketReminderDeliveries } from "@habit-gamba/reminders";
 import { createRecurringMarketSeries, endRecurringMarketSeries } from "@habit-gamba/recurring";
 import { cancelMarket, previewCancelMarket, resolveMarket } from "@habit-gamba/resolution";
 import {
+  ensureCommunityMembership,
   ensureSeedRepGrant,
+  getCommunityMembership,
   getUserById,
   grantUserRole,
   hasUserPermission,
+  upsertCommunity,
   upsertUser,
 } from "@habit-gamba/users";
 import { creditRep, penalizeRep } from "@habit-gamba/wallet";
@@ -26,7 +29,12 @@ import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { and, asc, desc, eq, gt, ilike, ne, or, sql } from "drizzle-orm";
 
-import { requireInternalBot, requireUser, requireUserByProviderIdentity } from "./auth";
+import {
+  requireCommunity,
+  requireInternalBot,
+  requireUserByProviderIdentity,
+  requireUserWithCommunity,
+} from "./auth";
 import { ApiError, errorBody, ok } from "./http";
 import { findContractIdForOutcome } from "./market";
 import { serverObservabilityMiddleware, type ServerObservability } from "./observability";
@@ -100,21 +108,47 @@ export function createApp(input: {
     requireInternalBot(context, input.botApiToken);
 
     const identity = accountIdentitySchema.parse(await context.req.json());
-    const user = await upsertUser({
-      db: input.db,
-      displayName: identity.displayName,
-      handle: identity.handle ?? null,
-      metadata: { source: identity.provider },
-      provider: identity.provider,
-      providerUserId: identity.providerUserId,
-    });
-    const grant = await ensureSeedRepGrant({
-      amountMicro: STARTER_REP_MICRO,
-      db: input.db,
-      idempotencyKey: `${identity.provider}:${identity.providerUserId}:starter-rep`,
-      metadata: { starterGrant: true },
-      sourceId: `${identity.provider}:${identity.providerUserId}:starter-rep`,
-      userId: user.id,
+    const { grant, user } = await input.db.transaction(async (tx) => {
+      const community = await upsertCommunity({
+        db: input.db,
+        displayName: identity.communityDisplayName,
+        provider: identity.communityProvider,
+        providerCommunityId: identity.providerCommunityId,
+        slug: createCommunitySlug(identity.communityDisplayName, identity.providerCommunityId),
+        tx,
+      });
+      const user = await upsertUser({
+        db: input.db,
+        displayName: identity.displayName,
+        handle: identity.handle ?? null,
+        metadata: { source: identity.provider },
+        provider: identity.provider,
+        providerUserId: identity.providerUserId,
+        tx,
+      });
+
+      await ensureCommunityMembership({
+        communityId: community.id,
+        db: input.db,
+        displayNameSnapshot: identity.displayName,
+        metadata: { source: identity.provider },
+        providerMemberId: identity.providerUserId,
+        tx,
+        userId: user.id,
+      });
+
+      const grant = await ensureSeedRepGrant({
+        amountMicro: STARTER_REP_MICRO,
+        communityId: community.id,
+        db: input.db,
+        idempotencyKey: `${identity.communityProvider}:${identity.providerCommunityId}:${identity.provider}:${identity.providerUserId}:starter-rep`,
+        metadata: { starterGrant: true },
+        sourceId: `${identity.communityProvider}:${identity.providerCommunityId}:${identity.provider}:${identity.providerUserId}:starter-rep`,
+        tx,
+        userId: user.id,
+      });
+
+      return { grant, user };
     });
 
     if (identity.admin) {
@@ -127,13 +161,15 @@ export function createApp(input: {
   });
 
   app.get("/accounts/me", async (context) => {
-    const user = await requireUser(context, input.db);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
 
-    return context.json(ok(await getPortfolio({ db: input.db, userId: user.id })));
+    return context.json(
+      ok(await getPortfolio({ communityId: community.id, db: input.db, userId: user.id })),
+    );
   });
 
   app.post("/accounts/:userId/adjustments", async (context) => {
-    const actor = await requireUser(context, input.db);
+    const { community, user: actor } = await requireUserWithCommunity(context, input.db);
     await requireAccountAdjuster(input.db, actor.id);
 
     const idempotencyKey = context.req.header("Idempotency-Key")?.trim();
@@ -150,6 +186,18 @@ export function createApp(input: {
         userId: targetUserId,
       });
     }
+    const targetMembership = await getCommunityMembership({
+      communityId: community.id,
+      db: input.db,
+      userId: targetUser.id,
+    });
+
+    if (!targetMembership) {
+      throw new ApiError(404, "USER_NOT_FOUND", "Target user was not found in this community", {
+        communityId: community.id,
+        userId: targetUser.id,
+      });
+    }
 
     const body = accountAdjustmentSchema.parse(await context.req.json());
     const sourceId = `account-adjustment:${idempotencyKey}`;
@@ -163,6 +211,7 @@ export function createApp(input: {
       body.direction === "credit"
         ? await creditRep({
             amountMicro: body.amountMicro,
+            communityId: community.id,
             db: input.db,
             idempotencyKey,
             metadata,
@@ -172,6 +221,7 @@ export function createApp(input: {
           })
         : await penalizeRep({
             amountMicro: body.amountMicro,
+            communityId: community.id,
             db: input.db,
             idempotencyKey,
             metadata,
@@ -191,19 +241,26 @@ export function createApp(input: {
   });
 
   app.get("/accounts/me/positions", async (context) => {
-    const user = await requireUser(context, input.db);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
 
-    return context.json(ok(await exchange.listPositions({ db: input.db, userId: user.id })));
+    return context.json(
+      ok(
+        await exchange.listPositions({ communityId: community.id, db: input.db, userId: user.id }),
+      ),
+    );
   });
 
   app.get("/markets", async (context) => {
+    const community = await requireCommunity(context, input.db);
     const actor = await optionalActor(
       input.db,
+      community.id,
       context.req.header("X-Provider"),
       context.req.header("X-Provider-User-Id"),
     );
     const markets = await autocompleteMarkets({
       actor,
+      communityId: community.id,
       db: input.db,
       query: context.req.query("query") ?? "",
       subcommand: context.req.query("subcommand"),
@@ -216,13 +273,19 @@ export function createApp(input: {
 
   app.get("/markets/by-discord-thread/:threadId", async (context) => {
     requireInternalBot(context, input.botApiToken);
+    const community = await requireCommunity(context, input.db);
 
     // TODO: Move provider-specific lookups into an integration/provider API when bot APIs split.
     const threadId = context.req.param("threadId");
     const rows = await input.db
       .select({ id: schema.markets.id })
       .from(schema.markets)
-      .where(sql`${schema.markets.metadata}->'discord'->>'threadId' = ${threadId}`)
+      .where(
+        and(
+          eq(schema.markets.communityId, community.id),
+          sql`${schema.markets.metadata}->'discord'->>'threadId' = ${threadId}`,
+        ),
+      )
       .orderBy(
         desc(schema.markets.updatedAt),
         desc(schema.markets.createdAt),
@@ -253,9 +316,10 @@ export function createApp(input: {
   });
 
   app.post("/markets", async (context) => {
-    const user = await requireUser(context, input.db);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
     const body = createMarketSchema.parse(await context.req.json());
     const result = await createBinaryMarket({
+      communityId: community.id,
       creatorUserId: user.id,
       db: input.db,
       ...(body.description === undefined ? {} : { description: body.description }),
@@ -268,18 +332,25 @@ export function createApp(input: {
   });
 
   app.get("/markets/:id", async (context) => {
+    const community = await requireCommunity(context, input.db);
     const marketId = context.req.param("id");
     const market = await exchange.getMarket({
       db: input.db,
       marketId,
     });
+    assertMarketCommunity(market, community.id);
 
     return context.json(ok(market));
   });
 
   app.post("/markets/:id/open", async (context) => {
-    const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const market = await requireMarketManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const body = openMarketSchema.parse(await context.req.json());
     const result = await openMarket({
       closesAt: body.closesAt,
@@ -291,8 +362,13 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/recurring-series", async (context) => {
-    const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const market = await requireMarketManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const body = createRecurringMarketSeriesSchema.parse(await context.req.json());
     const result = await createRecurringMarketSeries({
       creatorUserId: market.creatorUserId,
@@ -315,8 +391,13 @@ export function createApp(input: {
   });
 
   app.post("/recurring-market-series/:id/end", async (context) => {
-    const user = await requireUser(context, input.db);
-    const series = await requireRecurringSeriesManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const series = await requireRecurringSeriesManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const body = endRecurringMarketSeriesSchema.parse(await context.req.json());
     const result = await endRecurringMarketSeries({
       db: input.db,
@@ -329,9 +410,9 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/close", async (context) => {
-    const user = await requireUser(context, input.db);
-    await requireMarketAdmin(input.db, user.id);
-    const market = await requireMarket(input.db, context.req.param("id"));
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    await requireMarketAdmin(input.db, user.id, community.id);
+    const market = await requireMarket(input.db, context.req.param("id"), community.id);
     const result = await closeMarket({
       db: input.db,
       marketId: market.id,
@@ -341,12 +422,14 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/quote", async (context) => {
+    const community = await requireCommunity(context, input.db);
     const marketId = context.req.param("id");
     const body = tradeSchema.parse(await context.req.json());
     const market = await exchange.getMarket({
       db: input.db,
       marketId,
     });
+    assertMarketCommunity(market, community.id);
     const contractId = findContractIdForOutcome(market, body.outcome);
     const mode = body.mode as string;
     const result =
@@ -363,7 +446,7 @@ export function createApp(input: {
               contractId,
               outcome: body.outcome,
               sharesMicro: body.amountMicro,
-              userId: (await requireUser(context, input.db)).id,
+              userId: (await requireUserWithCommunity(context, input.db)).user.id,
             })
           : mode === "target_rep"
             ? await exchange.quoteSellForRep({
@@ -371,7 +454,7 @@ export function createApp(input: {
                 contractId,
                 outcome: body.outcome,
                 targetRepMicro: body.amountMicro,
-                userId: (await requireUser(context, input.db)).id,
+                userId: (await requireUserWithCommunity(context, input.db)).user.id,
               })
             : await exchange.quoteBuy({
                 amountMicro: body.amountMicro,
@@ -384,7 +467,7 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/buy", async (context) => {
-    const user = await requireUser(context, input.db);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
     const idempotencyKey = context.req.header("Idempotency-Key")?.trim();
 
     if (!idempotencyKey) {
@@ -400,6 +483,7 @@ export function createApp(input: {
       db: input.db,
       marketId,
     });
+    assertMarketCommunity(market, community.id);
     const contractId = findContractIdForOutcome(market, body.outcome);
     const result =
       body.mode === "buy_shares"
@@ -424,7 +508,7 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/sell", async (context) => {
-    const user = await requireUser(context, input.db);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
     const idempotencyKey = context.req.header("Idempotency-Key")?.trim();
 
     if (!idempotencyKey) {
@@ -440,6 +524,7 @@ export function createApp(input: {
       db: input.db,
       marketId,
     });
+    assertMarketCommunity(market, community.id);
     const contractId = findContractIdForOutcome(market, body.outcome);
     const result =
       body.mode === "target_rep"
@@ -464,8 +549,13 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/resolve", async (context) => {
-    const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const market = await requireMarketManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const body = resolveMarketSchema.parse(await context.req.json());
     const marketBeforeResolution = await exchange.getMarket({ db: input.db, marketId: market.id });
     const result = await resolveMarket({
@@ -500,8 +590,13 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/cancel/preview", async (context) => {
-    const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const market = await requireMarketManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const result = await previewCancelMarket({
       db: input.db,
       marketId: market.id,
@@ -511,8 +606,13 @@ export function createApp(input: {
   });
 
   app.post("/markets/:id/cancel", async (context) => {
-    const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const market = await requireMarketManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const body = (await context.req.json()) as { reason?: unknown };
 
     if (typeof body.reason !== "string" || body.reason.trim().length === 0) {
@@ -536,8 +636,13 @@ export function createApp(input: {
   app.get("/markets/:id/refresh-trades", async (context) => {
     requireInternalBot(context, input.botApiToken);
 
-    const user = await requireUser(context, input.db);
-    const market = await requireMarketManager(input.db, context.req.param("id"), user.id);
+    const { community, user } = await requireUserWithCommunity(context, input.db);
+    const market = await requireMarketManager(
+      input.db,
+      context.req.param("id"),
+      user.id,
+      community.id,
+    );
     const query = marketRefreshQuerySchema.parse({
       createdAt: context.req.query("createdAt"),
       id: context.req.query("id"),
@@ -557,7 +662,8 @@ export function createApp(input: {
   app.patch("/markets/:id/metadata", async (context) => {
     requireInternalBot(context, input.botApiToken);
 
-    const market = await requireMarket(input.db, context.req.param("id"));
+    const community = await requireCommunity(context, input.db);
+    const market = await requireMarket(input.db, context.req.param("id"), community.id);
     const body = marketMetadataPatchSchema.parse(await context.req.json());
     const updated = await input.db.transaction(async (tx) => {
       const [updatedMarket] = await tx
@@ -588,6 +694,7 @@ export function createApp(input: {
     context.json(
       ok(
         await getPortfolio({
+          communityId: (await requireCommunity(context, input.db)).id,
           db: input.db,
           userId: context.req.param("id"),
         }),
@@ -596,8 +703,9 @@ export function createApp(input: {
   );
 
   app.get("/leaderboard", async (context) => {
+    const community = await requireCommunity(context, input.db);
     const response = (await getLeaderboard(
-      toLeaderboardInput(input.db, context.req.query("limit")),
+      toLeaderboardInput(input.db, community.id, context.req.query("limit")),
     )) satisfies LeaderboardResponse;
 
     return context.json(ok(response));
@@ -606,10 +714,10 @@ export function createApp(input: {
   return app;
 }
 
-function toLeaderboardInput(db: DbClient, rawLimit: string | undefined) {
+function toLeaderboardInput(db: DbClient, communityId: string, rawLimit: string | undefined) {
   const limit = limitSchema.parse(rawLimit);
 
-  return limit === undefined ? { db } : { db, limit };
+  return limit === undefined ? { communityId, db } : { communityId, db, limit };
 }
 
 type OptionalActor = {
@@ -629,6 +737,7 @@ type TradeCursor = {
 
 async function optionalActor(
   db: DbClient,
+  communityId: string,
   provider: string | undefined,
   providerUserId: string | undefined,
 ): Promise<OptionalActor | undefined> {
@@ -645,6 +754,7 @@ async function optionalActor(
   return user
     ? {
         canManageMarkets: await hasUserPermission({
+          communityId,
           db,
           permission: "market.manage",
           userId: user.id,
@@ -654,19 +764,29 @@ async function optionalActor(
     : undefined;
 }
 
-async function requireMarket(db: DbClient, marketId: string) {
+async function requireMarket(db: DbClient, marketId: string, communityId?: string) {
   const market = await getMarketById({ db, marketId });
 
   if (!market) {
     throw new ApiError(404, "MARKET_NOT_FOUND", "Market not found", { marketId });
   }
 
+  if (communityId) {
+    assertMarketCommunity(market, communityId);
+  }
+
   return market;
 }
 
-async function requireMarketManager(db: DbClient, marketId: string, userId: string) {
-  const market = await requireMarket(db, marketId);
+async function requireMarketManager(
+  db: DbClient,
+  marketId: string,
+  userId: string,
+  communityId: string,
+) {
+  const market = await requireMarket(db, marketId, communityId);
   const canManageMarkets = await hasUserPermission({
+    communityId,
     db,
     permission: "market.manage",
     userId,
@@ -679,8 +799,9 @@ async function requireMarketManager(db: DbClient, marketId: string, userId: stri
   return market;
 }
 
-async function requireMarketAdmin(db: DbClient, userId: string) {
+async function requireMarketAdmin(db: DbClient, userId: string, communityId: string) {
   const canManageMarkets = await hasUserPermission({
+    communityId,
     db,
     permission: "market.manage",
     userId,
@@ -691,7 +812,12 @@ async function requireMarketAdmin(db: DbClient, userId: string) {
   }
 }
 
-async function requireRecurringSeriesManager(db: DbClient, seriesId: string, userId: string) {
+async function requireRecurringSeriesManager(
+  db: DbClient,
+  seriesId: string,
+  userId: string,
+  communityId: string,
+) {
   const [series] = await db
     .select()
     .from(schema.recurringMarketSeries)
@@ -703,14 +829,16 @@ async function requireRecurringSeriesManager(db: DbClient, seriesId: string, use
       seriesId,
     });
   }
+  const sourceMarket = await requireMarket(db, series.sourceMarketId, communityId);
 
   const canManageMarkets = await hasUserPermission({
+    communityId,
     db,
     permission: "market.manage",
     userId,
   });
 
-  if (series.creatorUserId !== userId && !canManageMarkets) {
+  if (sourceMarket.creatorUserId !== userId && !canManageMarkets) {
     throw new ApiError(403, "FORBIDDEN", "Only the series creator or a market admin may do this");
   }
 
@@ -731,6 +859,7 @@ async function requireAccountAdjuster(db: DbClient, userId: string) {
 
 async function autocompleteMarkets(input: {
   actor?: OptionalActor | undefined;
+  communityId: string;
   db: DbClient;
   query: string;
   subcommand?: string | undefined;
@@ -743,7 +872,13 @@ async function autocompleteMarkets(input: {
   const rows = await input.db
     .select()
     .from(schema.markets)
-    .where(and(queryWhere, ...autocompletePolicy(input)))
+    .where(
+      and(
+        eq(schema.markets.communityId, input.communityId),
+        queryWhere,
+        ...autocompletePolicy(input),
+      ),
+    )
     .orderBy(sql`${schema.markets.createdAt} desc`, sql`${schema.markets.id} desc`)
     .limit(25);
   const result = await Promise.all(
@@ -893,6 +1028,29 @@ function createSlug(title: string): string {
     .slice(0, 48);
 
   return `${base || "market"}-${createId().slice(-6).toLowerCase()}`;
+}
+
+function createCommunitySlug(displayName: string, providerCommunityId: string): string {
+  const base = displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 48);
+  const suffix = providerCommunityId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(-8);
+
+  return `${base || "community"}-${suffix || createId().slice(-6).toLowerCase()}`;
+}
+
+function assertMarketCommunity(
+  market: { communityId: string | null; id: string },
+  communityId: string,
+) {
+  if (market.communityId !== communityId) {
+    throw new ApiError(404, "MARKET_NOT_FOUND", "Market not found", { marketId: market.id });
+  }
 }
 
 function mergeRecords(

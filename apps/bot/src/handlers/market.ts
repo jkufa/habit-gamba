@@ -47,6 +47,7 @@ import {
   parseMode,
   parseOutcome,
   requireActor,
+  requireDiscordCommunity,
   requiredField,
   requireValue,
   resolveDefaultMarketValue,
@@ -206,7 +207,8 @@ export async function handleMarketModal(
     );
     const market = await viewMarketCommand({
       ...context.services,
-      marketId: await resolveMarketId(context, marketValue),
+      community: requireDiscordCommunity(interaction),
+      marketId: await resolveMarketId(context, interaction, marketValue),
     });
     await interaction.reply({
       embeds: [marketEmbed(market, "Market")],
@@ -317,7 +319,7 @@ async function replyWithRecurringSchedule(
   await interaction.reply({
     components: recurringScheduleRows({
       actorUserId: interaction.user.id,
-      marketId: await resolveMarketId(context, marketId),
+      marketId: await resolveMarketId(context, interaction, marketId),
       mask: 0,
       selectedPreset: null,
     }),
@@ -338,7 +340,8 @@ async function handleRecurringEnd(
   const actor = await requireActor(context, interaction);
   const market = await viewMarketCommand({
     ...context.services,
-    marketId: await resolveMarketId(context, marketValue),
+    community: requireDiscordCommunity(interaction),
+    marketId: await resolveMarketId(context, interaction, marketValue),
   });
 
   if (!market.recurringSeriesId) {
@@ -715,7 +718,8 @@ async function handleMarketView(
 
   const market = await viewMarketCommand({
     ...context.services,
-    marketId: await resolveMarketId(context, marketId),
+    community: requireDiscordCommunity(interaction),
+    marketId: await resolveMarketId(context, interaction, marketId),
   });
   await interaction.reply({
     embeds: [marketEmbed(market, "Market")],
@@ -922,7 +926,7 @@ async function createRecurringMarketFromValues(
       embeds: [marketEmbed(result.firstMarket, "Market opened")],
       flags: MessageFlags.Ephemeral,
     });
-    await postOrUpdateMarketSummary(context, result.firstMarket, thread);
+    await postOrUpdateMarketSummary(context, interaction, result.firstMarket, thread);
     return;
   }
 
@@ -946,12 +950,12 @@ async function openMarketFromValues(
     ...context.services,
     actor,
     closesAt: parseCloseDate(values.closesAt),
-    marketId: await resolveMarketId(context, values.market),
+    marketId: await resolveMarketId(context, interaction, values.market),
   });
   const thread = await ensureAndPersistMarketThread(context, interaction, market);
 
   await interaction.reply({ content: marketOpenedContent(market.title) });
-  await postOrUpdateMarketSummary(context, market, thread);
+  await postOrUpdateMarketSummary(context, interaction, market, thread);
 }
 
 async function buyMarketFromValues(
@@ -968,7 +972,7 @@ async function buyMarketFromValues(
   const result = await buyMarketCommand({
     ...context.services,
     actor,
-    marketId: await resolveMarketId(context, values.market),
+    marketId: await resolveMarketId(context, interaction, values.market),
     mode,
     outcome,
     value: values.amount,
@@ -1007,7 +1011,7 @@ async function sellMarketFromValues(
   const result = await sellMarketCommand({
     ...context.services,
     actor,
-    marketId: await resolveMarketId(context, values.market),
+    marketId: await resolveMarketId(context, interaction, values.market),
     mode,
     outcome,
     value: values.amount,
@@ -1043,7 +1047,7 @@ async function resolveMarketFromValues(
   },
 ) {
   const actor = await requireActor(context, interaction);
-  const marketId = await resolveMarketId(context, values.market);
+  const marketId = await resolveMarketId(context, interaction, values.market);
 
   const outcome = parseOutcome(values.outcome);
   const result = await resolveMarketCommand({
@@ -1073,8 +1077,12 @@ async function cancelMarketFromValues(
   values: { market: string; reason: string },
 ) {
   const actor = await requireActor(context, interaction);
-  const marketId = await resolveMarketId(context, values.market);
-  const market = await viewMarketCommand({ ...context.services, marketId });
+  const marketId = await resolveMarketId(context, interaction, values.market);
+  const market = await viewMarketCommand({
+    ...context.services,
+    community: requireDiscordCommunity(interaction),
+    marketId,
+  });
 
   if (actor.userId === market.creatorUserId) {
     const preview = await previewCancelMarketCommand({ ...context.services, actor, marketId });
@@ -1113,6 +1121,7 @@ async function ensureAndPersistMarketThread(
   if (thread) {
     await writeMarketDiscordMetadata({
       ...context.services,
+      community: requireDiscordCommunity(interaction),
       marketId: market.id,
       metadata: {
         channelId: interaction.channelId,
@@ -1141,7 +1150,7 @@ async function postToMarketThread(
   content: string,
 ) {
   const thread = await ensureAndPersistMarketThread(context, interaction, market);
-  await postOrUpdateMarketSummary(context, market, thread);
+  await postOrUpdateMarketSummary(context, interaction, market, thread);
   await thread?.send({ content });
 }
 
@@ -1151,7 +1160,7 @@ async function refreshMarketThread(
   marketValue: string,
 ) {
   const actor = await requireActor(context, interaction);
-  const marketId = await resolveMarketId(context, marketValue);
+  const marketId = await resolveMarketId(context, interaction, marketValue);
   const market = await refreshMarketCommand({
     ...context.services,
     actor,
@@ -1174,7 +1183,7 @@ async function refreshMarketThread(
     return;
   }
 
-  await postOrUpdateMarketSummary(context, market, thread);
+  await postOrUpdateMarketSummary(context, interaction, market, thread);
 
   for (const trade of trades) {
     await thread.send({
@@ -1193,6 +1202,7 @@ async function refreshMarketThread(
 
     await writeMarketDiscordMetadata({
       ...context.services,
+      community: requireDiscordCommunity(interaction),
       marketId,
       metadata: {
         lastTradeRefresh: serializeLastTradeRefresh(lastTrade),
@@ -1208,6 +1218,7 @@ async function refreshMarketThread(
 
 async function postOrUpdateMarketSummary(
   context: BotHandlerContext,
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
   market: {
     id: string;
     metadata: Record<string, unknown>;
@@ -1254,6 +1265,7 @@ async function postOrUpdateMarketSummary(
   });
   await writeMarketDiscordMetadata({
     ...context.services,
+    community: requireDiscordCommunity(interaction),
     marketId: market.id,
     metadata: {
       summaryMessageId: summary.id,

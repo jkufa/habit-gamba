@@ -3,6 +3,7 @@ import { EmbedBuilder, MessageFlags, type ChatInputCommandInteraction } from "di
 import { REP_SCALE } from "@habit-gamba/db";
 
 import { getLeaderboardCommand, type BotLeaderboardEntry } from "../service";
+import { requireDiscordCommunity } from "./utils";
 import type { BotHandlerContext } from "./context";
 
 const DEFAULT_LEADERBOARD_LIMIT = 10;
@@ -15,7 +16,11 @@ export async function handleLeaderboard(
 ) {
   const limit = normalizeLeaderboardLimit(interaction.options.getInteger("limit"));
   const isPrivate = interaction.options.getBoolean("private") ?? false;
-  const result = await getLeaderboardCommand({ ...context.services, limit });
+  const result = await getLeaderboardCommand({
+    ...context.services,
+    community: requireDiscordCommunity(interaction),
+    limit,
+  });
 
   if (result.entries.length === 0) {
     await interaction.reply({
@@ -28,7 +33,7 @@ export async function handleLeaderboard(
   await interaction.reply({
     embeds: [
       new EmbedBuilder()
-        .setTitle("Global REP Leaderboard")
+        .setTitle("REP Leaderboard")
         .setDescription(formatLeaderboardRows(result.entries)),
     ],
     flags: isPrivate ? MessageFlags.Ephemeral : undefined,

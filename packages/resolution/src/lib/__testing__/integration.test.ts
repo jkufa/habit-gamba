@@ -1,5 +1,11 @@
 import { closeMarket, createBinaryMarket, openMarket } from "@habit-gamba/contracts";
-import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
+import {
+  DEFAULT_COMMUNITY_ID,
+  createDbClient,
+  createId,
+  repToMicro,
+  schema,
+} from "@habit-gamba/db";
 import { createExchange } from "@habit-gamba/exchange";
 import { creditRep, getBalance } from "@habit-gamba/wallet";
 import { and, eq, inArray, like, lte, or } from "drizzle-orm";
@@ -40,8 +46,16 @@ maybeDescribe("resolution settlement", () => {
 
     await buy(marketId, noBettorId, "NO", repToMicro(3n), "resolve-no");
 
-    const yesBefore = await getBalance({ db: client.db, userId: yesBettorId });
-    const noBefore = await getBalance({ db: client.db, userId: noBettorId });
+    const yesBefore = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: yesBettorId,
+    });
+    const noBefore = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: noBettorId,
+    });
     const first = await resolveMarket({
       db: client.db,
       marketId,
@@ -55,8 +69,16 @@ maybeDescribe("resolution settlement", () => {
       outcome: "YES",
       resolvedByUserId: creatorId,
     });
-    const yesAfter = await getBalance({ db: client.db, userId: yesBettorId });
-    const noAfter = await getBalance({ db: client.db, userId: noBettorId });
+    const yesAfter = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: yesBettorId,
+    });
+    const noAfter = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: noBettorId,
+    });
     const contracts = await client.db
       .select()
       .from(schema.contracts)
@@ -102,9 +124,21 @@ maybeDescribe("resolution settlement", () => {
     const { creatorId, marketId, noBettorId, yesBettorId } = await createFundedOpenMarket("cancel");
     const yesBuy = await buy(marketId, yesBettorId, "YES", repToMicro(4n), "cancel-yes");
     const noBuy = await buy(marketId, noBettorId, "NO", repToMicro(2n), "cancel-no");
-    const creatorBefore = await getBalance({ db: client.db, userId: creatorId });
-    const yesBefore = await getBalance({ db: client.db, userId: yesBettorId });
-    const noBefore = await getBalance({ db: client.db, userId: noBettorId });
+    const creatorBefore = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: creatorId,
+    });
+    const yesBefore = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: yesBettorId,
+    });
+    const noBefore = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: noBettorId,
+    });
     const refundTotal = -yesBuy.trade.cashDeltaMicro - noBuy.trade.cashDeltaMicro;
     const expectedPenalty = refundTotal / 10n;
     const first = await cancelMarket({
@@ -120,9 +154,21 @@ maybeDescribe("resolution settlement", () => {
       marketId,
       reason: "test cancel",
     });
-    const creatorAfter = await getBalance({ db: client.db, userId: creatorId });
-    const yesAfter = await getBalance({ db: client.db, userId: yesBettorId });
-    const noAfter = await getBalance({ db: client.db, userId: noBettorId });
+    const creatorAfter = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: creatorId,
+    });
+    const yesAfter = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: yesBettorId,
+    });
+    const noAfter = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: noBettorId,
+    });
     const report = await checkResolutionInvariant({
       db: client.db,
       scope: { kind: "all", marketIds: [marketId] },
@@ -298,6 +344,7 @@ maybeDescribe("resolution settlement", () => {
     ]);
 
     const { market } = await createBinaryMarket({
+      communityId: DEFAULT_COMMUNITY_ID,
       creatorUserId: creatorId,
       db: client.db,
       slug: `resolution-test-${label}-${createId().toLowerCase()}`,
@@ -362,6 +409,7 @@ maybeDescribe("resolution settlement", () => {
 
   async function fundUser(userId: string, amountMicro: bigint, label: string) {
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro,
       db: client.db,
       idempotencyKey: `resolution-test:${userId}:fund:${label}`,

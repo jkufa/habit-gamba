@@ -9,6 +9,12 @@ import {
   sellMarketCommand,
 } from "../service";
 
+const community = {
+  displayName: "Test Guild",
+  provider: "discord" as const,
+  providerCommunityId: "guild-1",
+};
+
 describe("bot API service", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -42,6 +48,7 @@ describe("bot API service", () => {
 
     const result = await resolveMarketCommand({
       actor: {
+        community,
         discordUserId: "discord-1",
         userId: "user-1",
       },
@@ -62,7 +69,9 @@ describe("bot API service", () => {
         headers: {
           Authorization: "Bearer bot-token",
           "Content-Type": "application/json",
+          "X-Community-Provider": "discord",
           "X-Provider": "discord",
+          "X-Provider-Community-Id": "guild-1",
           "X-Provider-User-Id": "discord-1",
         },
         method: "POST",
@@ -107,6 +116,7 @@ describe("bot API service", () => {
     const result = await getLeaderboardCommand({
       apiBaseUrl: "https://api.example.test",
       botApiToken: "bot-token",
+      community,
       limit: 10,
     });
 
@@ -117,6 +127,8 @@ describe("bot API service", () => {
         headers: {
           Authorization: "Bearer bot-token",
           "Content-Type": "application/json",
+          "X-Community-Provider": "discord",
+          "X-Provider-Community-Id": "guild-1",
         },
         method: "GET",
       },
@@ -166,6 +178,7 @@ describe("bot API service", () => {
 
     const result = await adjustUserBalanceCommand({
       actor: {
+        community,
         discordUserId: "discord-admin",
         userId: "admin-user",
       },
@@ -260,6 +273,7 @@ describe("bot API service", () => {
 
     const result = await buyMarketCommand({
       actor: {
+        community,
         discordUserId: "discord-1",
         userId: "user-1",
       },
@@ -351,6 +365,7 @@ describe("bot API service", () => {
 
     const result = await sellMarketCommand({
       actor: {
+        community,
         discordUserId: "discord-1",
         userId: "user-1",
       },
@@ -413,8 +428,12 @@ describe("bot API service", () => {
       apiBaseUrl: "https://api.example.test",
       botApiToken: "bot-token",
     };
-    const found = await findMarketByDiscordThread({ ...services, threadId: "thread-1" });
-    const missing = await findMarketByDiscordThread({ ...services, threadId: "missing-thread" });
+    const found = await findMarketByDiscordThread({ ...services, community, threadId: "thread-1" });
+    const missing = await findMarketByDiscordThread({
+      ...services,
+      community,
+      threadId: "missing-thread",
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       new URL("/markets/by-discord-thread/thread-1", "https://api.example.test"),
@@ -423,6 +442,8 @@ describe("bot API service", () => {
         headers: {
           Authorization: "Bearer bot-token",
           "Content-Type": "application/json",
+          "X-Community-Provider": "discord",
+          "X-Provider-Community-Id": "guild-1",
         },
         method: "GET",
       },

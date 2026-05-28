@@ -318,10 +318,12 @@ async function createDueOccurrence(input: {
   const openedAt = openAtForLocalDate(recurrenceDate);
   const closesAt = closeAtForLocalDate(recurrenceDate);
   const marketId = createId();
+  const sourceMarket = await loadMarketForUpdate(input.tx, input.series.sourceMarketId);
   const [market] = await input.tx
     .insert(schema.markets)
     .values({
       closesAt,
+      communityId: sourceMarket.communityId,
       creatorUserId: input.series.creatorUserId,
       description: input.series.description,
       id: marketId,

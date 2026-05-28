@@ -63,6 +63,8 @@ function interaction(): ChatInputCommandInteraction {
         toString: () => "<@discord-target>",
       }),
     },
+    guild: { name: "Guild" },
+    guildId: "guild-1",
     reply: vi.fn(),
     user: {
       id: "discord-admin",

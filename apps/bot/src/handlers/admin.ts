@@ -2,7 +2,13 @@ import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
 
 import { formatMicro, parseDecimalMicro } from "../money";
 import { adjustUserBalanceCommand, closeMarketCommand, getDiscordUser } from "../service";
-import { marketEmbed, requireActor, requireValue, resolveMarketId } from "./utils";
+import {
+  marketEmbed,
+  requireActor,
+  requireDiscordCommunity,
+  requireValue,
+  resolveMarketId,
+} from "./utils";
 import type { BotHandlerContext } from "./context";
 
 export async function handleAdmin(
@@ -25,6 +31,7 @@ export async function handleAdmin(
   const targetDiscordUser = interaction.options.getUser("user", true);
   const targetUser = await getDiscordUser({
     ...context.services,
+    community: requireDiscordCommunity(interaction),
     discordUserId: targetDiscordUser.id,
   });
 
@@ -70,7 +77,7 @@ async function handleAdminMarket(
   const market = await closeMarketCommand({
     ...context.services,
     actor,
-    marketId: await resolveMarketId(context, marketId),
+    marketId: await resolveMarketId(context, interaction, marketId),
   });
 
   await interaction.reply({

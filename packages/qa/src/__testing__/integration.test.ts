@@ -1,4 +1,4 @@
-import { createDbClient, schema } from "@habit-gamba/db";
+import { DEFAULT_COMMUNITY_ID, createDbClient, schema } from "@habit-gamba/db";
 import { getBalance } from "@habit-gamba/wallet";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -24,7 +24,11 @@ maybeDescribe("qa setup and runner", () => {
   it("sets up QA fixtures idempotently and only grants balance deltas", async () => {
     const first = await setupQaFixtures({ db: client.db, minimumRepMicro: 10n });
     const second = await setupQaFixtures({ db: client.db, minimumRepMicro: 10n });
-    const balance = await getBalance({ db: client.db, userId: first.users[0]?.id ?? "" });
+    const balance = await getBalance({
+      communityId: DEFAULT_COMMUNITY_ID,
+      db: client.db,
+      userId: first.users[0]?.id ?? "",
+    });
     const ledgerRows = await client.db.select().from(schema.ledgerEntries);
     const firstUserSetupRows = ledgerRows.filter(
       (entry) => entry.userId === first.users[0]?.id && entry.metadata.qaSetup === true,

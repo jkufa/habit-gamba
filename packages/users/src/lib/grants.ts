@@ -50,7 +50,11 @@ export async function ensureSeedRepGrant(
         updatedAt: new Date(),
       })
       .where(
-        and(eq(schema.balances.userId, input.userId), eq(schema.balances.currency, REP_CURRENCY)),
+        and(
+          eq(schema.balances.userId, input.userId),
+          eq(schema.balances.currency, REP_CURRENCY),
+          eq(schema.balances.communityId, input.communityId),
+        ),
       )
       .returning();
 
@@ -64,6 +68,7 @@ export async function ensureSeedRepGrant(
         amountDeltaMicro: input.amountMicro,
         balanceAfterMicro: nextAvailableAmountMicro,
         currency: REP_CURRENCY,
+        communityId: input.communityId,
         id: input.ledgerEntryId ?? createId(),
         idempotencyKey: input.idempotencyKey,
         metadata: input.metadata ?? {},
@@ -88,23 +93,28 @@ export async function ensureSeedRepGrant(
 
 async function ensureLockedRepBalance(
   tx: UserExecutor,
-  input: Pick<EnsureSeedRepGrantInput, "balanceId" | "userId">,
+  input: Pick<EnsureSeedRepGrantInput, "balanceId" | "communityId" | "userId">,
 ): Promise<Balance> {
   await tx
     .insert(schema.balances)
     .values({
       id: input.balanceId ?? createId(),
+      communityId: input.communityId,
       userId: input.userId,
     })
     .onConflictDoNothing({
-      target: [schema.balances.userId, schema.balances.currency],
+      target: [schema.balances.userId, schema.balances.currency, schema.balances.communityId],
     });
 
   const [balance] = await tx
     .select()
     .from(schema.balances)
     .where(
-      and(eq(schema.balances.userId, input.userId), eq(schema.balances.currency, REP_CURRENCY)),
+      and(
+        eq(schema.balances.userId, input.userId),
+        eq(schema.balances.currency, REP_CURRENCY),
+        eq(schema.balances.communityId, input.communityId),
+      ),
     )
     .for("update")
     .limit(1);
@@ -135,6 +145,7 @@ function assertSameSeedGrant(
 ): LedgerEntry {
   if (
     ledgerEntry.amountDeltaMicro !== input.amountMicro ||
+    ledgerEntry.communityId !== input.communityId ||
     ledgerEntry.reason !== "seed_grant" ||
     ledgerEntry.sourceId !== (input.sourceId ?? input.userId) ||
     ledgerEntry.sourceType !== SEED_GRANT_SOURCE_TYPE ||

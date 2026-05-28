@@ -9,6 +9,11 @@ export {
 } from "./event-deliveries";
 export type { ClaimedEventDelivery, EventDelivery, EventDeliveryStatus } from "./event-deliveries";
 export { REP_CURRENCY, REP_SCALE, repToMicro } from "./currency";
+export {
+  DEFAULT_COMMUNITY_ID,
+  DEFAULT_COMMUNITY_PROVIDER,
+  DEFAULT_PROVIDER_COMMUNITY_ID,
+} from "./community";
 export { insertEvent } from "./events";
 export type { Event, EventExecutor, InsertEventInput } from "./events";
 export { createId } from "./id";

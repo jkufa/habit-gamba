@@ -38,7 +38,9 @@ export async function getMarketBySlug(
   const [market] = await executor
     .select()
     .from(schema.markets)
-    .where(eq(schema.markets.slug, input.slug))
+    .where(
+      and(eq(schema.markets.communityId, input.communityId), eq(schema.markets.slug, input.slug)),
+    )
     .limit(1);
 
   if (!market) {
@@ -53,6 +55,7 @@ export async function listMarkets(input: ListMarketsInput): Promise<ListMarketsR
   const limit = normalizeLimit(input.limit);
   const where = and(
     input.creatorUserId ? eq(schema.markets.creatorUserId, input.creatorUserId) : undefined,
+    input.communityId ? eq(schema.markets.communityId, input.communityId) : undefined,
     input.statuses && input.statuses.length > 0
       ? inArray(schema.markets.status, input.statuses)
       : undefined,

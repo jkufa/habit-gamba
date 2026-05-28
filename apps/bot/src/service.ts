@@ -32,10 +32,17 @@ const INITIAL_REFRESH_TRADE_LIMIT = 10;
 const INCREMENTAL_REFRESH_TRADE_LIMIT = 25;
 
 export type DiscordIdentity = {
+  community: DiscordCommunity;
   displayName: string;
   handle?: string | null;
   isAdmin?: boolean;
   userId: string;
+};
+
+export type DiscordCommunity = {
+  displayName: string;
+  provider: typeof DISCORD_PROVIDER;
+  providerCommunityId: string;
 };
 
 export type BotServices = {
@@ -207,10 +214,13 @@ export class BotApiError extends Error {
   }
 }
 
-export async function getDiscordUser(input: BotServices & { discordUserId: string }) {
+export async function getDiscordUser(
+  input: BotServices & { community: DiscordCommunity; discordUserId: string },
+) {
   const result = await request<AccountResponse>(input, "/accounts/me", {
     actor: { discordUserId: input.discordUserId },
     allowNotFound: true,
+    community: input.community,
     method: "GET",
   });
 
@@ -223,9 +233,13 @@ export async function registerAccount(input: BotServices & { identity: DiscordId
       ...(input.identity.isAdmin === undefined ? {} : { admin: input.identity.isAdmin }),
       displayName: input.identity.displayName,
       handle: input.identity.handle ?? null,
+      communityDisplayName: input.identity.community.displayName,
+      communityProvider: input.identity.community.provider,
       provider: DISCORD_PROVIDER,
+      providerCommunityId: input.identity.community.providerCommunityId,
       providerUserId: input.identity.userId,
     },
+    community: input.identity.community,
     method: "POST",
   });
 
@@ -239,6 +253,7 @@ export async function registerAccount(input: BotServices & { identity: DiscordId
 export async function getAccount(input: BotServices & { actor: Actor }) {
   const result = await request<AccountResponse>(input, "/accounts/me", {
     actor: input.actor,
+    community: input.actor.community,
     method: "GET",
   });
 
@@ -267,6 +282,7 @@ export async function adjustUserBalanceCommand(
         direction: input.direction,
         reason: input.reason,
       },
+      community: input.actor.community,
       idempotencyKey: `discord:${input.actor.discordUserId}:admin:${input.direction}:${crypto.randomUUID()}`,
       method: "POST",
     },
@@ -290,6 +306,7 @@ export async function createMarketCommand(
       ...(input.slug ? { slug: input.slug } : {}),
       title: input.title.trim(),
     },
+    community: input.actor.community,
     method: "POST",
   });
 
@@ -308,6 +325,7 @@ export async function openMarketCommand(
     body: {
       closesAt: input.closesAt.toISOString(),
     },
+    community: input.actor.community,
     method: "POST",
   });
 
@@ -333,6 +351,7 @@ export async function createRecurringMarketSeriesCommand(
         endsOn: input.endsOn ?? null,
         metadata: input.metadata,
       },
+      community: input.actor.community,
       method: "POST",
     },
   );
@@ -358,6 +377,7 @@ export async function endRecurringMarketSeriesCommand(
       body: {
         reason: input.reason ?? null,
       },
+      community: input.actor.community,
       method: "POST",
     },
   );
@@ -370,6 +390,7 @@ export async function closeMarketCommand(
 ): Promise<BotMarket> {
   const result = await request<CloseMarketResponse>(input, `/markets/${input.marketId}/close`, {
     actor: input.actor,
+    community: input.actor.community,
     method: "POST",
   });
 
@@ -383,9 +404,10 @@ export async function refreshMarketCommand(
 }
 
 export async function viewMarketCommand(
-  input: BotServices & { marketId: string },
+  input: BotServices & { actor?: Actor; community?: DiscordCommunity; marketId: string },
 ): Promise<BotMarket> {
   const result = await request<MarketResponse>(input, `/markets/${input.marketId}`, {
+    community: requireRequestCommunity(input),
     method: "GET",
   });
 
@@ -393,12 +415,13 @@ export async function viewMarketCommand(
 }
 
 export async function findMarketByDiscordThread(
-  input: BotServices & { threadId: string },
+  input: BotServices & { community: DiscordCommunity; threadId: string },
 ): Promise<BotMarket | null> {
   const threadId = encodeURIComponent(input.threadId);
 
   try {
     const result = await request<MarketResponse>(input, `/markets/by-discord-thread/${threadId}`, {
+      community: input.community,
       method: "GET",
     });
 
@@ -429,6 +452,7 @@ export async function buyMarketCommand(
       mode: input.mode,
       outcome: input.outcome,
     },
+    community: input.actor.community,
     idempotencyKey: `discord:${input.actor.discordUserId}:buy:${crypto.randomUUID()}`,
     method: "POST",
   });
@@ -453,6 +477,7 @@ export async function sellMarketCommand(
       mode: input.mode,
       outcome: input.outcome,
     },
+    community: input.actor.community,
     idempotencyKey: `discord:${input.actor.discordUserId}:sell:${crypto.randomUUID()}`,
     method: "POST",
   });
@@ -465,6 +490,7 @@ export async function listPositionsCommand(
 ): Promise<{ positions: BotPositionView[] }> {
   const result = await request<PositionsResponse>(input, "/accounts/me/positions", {
     actor: input.actor,
+    community: input.actor.community,
     method: "GET",
   });
 
@@ -474,7 +500,7 @@ export async function listPositionsCommand(
 }
 
 export async function getLeaderboardCommand(
-  input: BotServices & { limit?: number },
+  input: BotServices & { community: DiscordCommunity; limit?: number },
 ): Promise<{ entries: BotLeaderboardEntry[] }> {
   const params = new URLSearchParams();
 
@@ -484,6 +510,7 @@ export async function getLeaderboardCommand(
 
   const query = params.size > 0 ? `?${params}` : "";
   const result = await request<LeaderboardResponse>(input, `/leaderboard${query}`, {
+    community: input.community,
     method: "GET",
   });
 
@@ -506,6 +533,7 @@ export async function resolveMarketCommand(
       evidence: input.evidence,
       outcome: input.outcome,
     },
+    community: input.actor.community,
     method: "POST",
   });
 
@@ -524,6 +552,7 @@ export async function cancelMarketCommand(
     body: {
       reason: input.reason,
     },
+    community: input.actor.community,
     method: "POST",
   });
 
@@ -536,13 +565,19 @@ export async function previewCancelMarketCommand(
   return parseCancelPreview(
     await request<PreviewCancelResponse>(input, `/markets/${input.marketId}/cancel/preview`, {
       actor: input.actor,
+      community: input.actor?.community,
       method: "POST",
     }),
   );
 }
 
 export async function autocompleteMarkets(
-  input: BotServices & { actor?: Actor; query: string; subcommand?: string },
+  input: BotServices & {
+    actor?: Actor;
+    community: DiscordCommunity;
+    query: string;
+    subcommand?: string;
+  },
 ): Promise<BotMarket[]> {
   const params = new URLSearchParams({ query: input.query });
 
@@ -553,7 +588,7 @@ export async function autocompleteMarkets(
   const result = await request<AutocompleteMarketsResponse>(
     input,
     `/markets?${params}`,
-    withOptionalActor(input.actor, "GET"),
+    withOptionalActor(input.actor, "GET", input.community),
   );
 
   return result.markets.map(parseMarket);
@@ -561,6 +596,7 @@ export async function autocompleteMarkets(
 
 export async function writeMarketDiscordMetadata(
   input: BotServices & {
+    community: DiscordCommunity;
     marketId: string;
     metadata: Record<string, unknown>;
   },
@@ -571,6 +607,7 @@ export async function writeMarketDiscordMetadata(
         discord: input.metadata,
       },
     },
+    community: input.community,
     method: "PATCH",
   });
 }
@@ -593,7 +630,7 @@ export async function listMarketRefreshTrades(
   const result = await request<RefreshTradesResponse>(
     input,
     `/markets/${input.marketId}/refresh-trades${query}`,
-    withOptionalActor(input.actor, "GET"),
+    withOptionalActor(input.actor, "GET", input.actor.community),
   );
 
   return result.trades.map(parseRefreshTrade);
@@ -753,6 +790,7 @@ type RequestOptions = {
   actor?: Pick<Actor, "discordUserId"> | undefined;
   allowNotFound?: boolean;
   body?: unknown;
+  community?: DiscordCommunity | undefined;
   idempotencyKey?: string;
   method: "GET" | "PATCH" | "POST";
 };
@@ -800,6 +838,7 @@ function requestHeaders(input: BotServices, options: RequestOptions): Record<str
     Authorization: `Bearer ${input.botApiToken}`,
     "Content-Type": "application/json",
     ...(options.actor ? actorHeaders(options.actor) : {}),
+    ...(options.community ? communityHeaders(options.community) : {}),
     ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
   };
 }
@@ -814,8 +853,26 @@ function actorHeaders(actor: Pick<Actor, "discordUserId">): Record<string, strin
 function withOptionalActor(
   actor: Actor | undefined,
   method: RequestOptions["method"],
+  community: DiscordCommunity,
 ): RequestOptions {
-  return actor ? { actor, method } : { method };
+  return actor ? { actor, community: actor.community, method } : { community, method };
+}
+
+function communityHeaders(community: DiscordCommunity): Record<string, string> {
+  return {
+    "X-Community-Provider": community.provider,
+    "X-Provider-Community-Id": community.providerCommunityId,
+  };
+}
+
+function requireRequestCommunity(input: { actor?: Actor; community?: DiscordCommunity }) {
+  const community = input.community ?? input.actor?.community;
+
+  if (!community) {
+    throw new Error("Community context is required");
+  }
+
+  return community;
 }
 
 function parseUser(value: Serialized<AccountResponse["user"]>): BotUser {

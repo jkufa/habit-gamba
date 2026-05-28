@@ -16,7 +16,13 @@ import type {
   Serialized,
   SellMarketResponse,
 } from "@habit-gamba/api";
-import { createDbClient, createId, repToMicro, schema } from "@habit-gamba/db";
+import {
+  DEFAULT_COMMUNITY_ID,
+  createDbClient,
+  createId,
+  repToMicro,
+  schema,
+} from "@habit-gamba/db";
 import { createLogger } from "@habit-gamba/logger";
 import { grantUserRole, hasUserPermission } from "@habit-gamba/users";
 import { creditRep } from "@habit-gamba/wallet";
@@ -30,6 +36,11 @@ import { createServerObservability } from "./observability";
 const databaseUrl = process.env.DATABASE_URL;
 const maybeDescribe = databaseUrl ? describe : describe.skip;
 const migrationsFolder = new URL("../../../packages/db/drizzle", import.meta.url).pathname;
+const testCommunity = {
+  displayName: "Habit Gamba",
+  provider: "system",
+  providerCommunityId: "default",
+};
 
 maybeDescribe("server API", () => {
   const client = createDbClient({ databaseUrl: databaseUrl ?? "", max: 8 });
@@ -101,6 +112,7 @@ maybeDescribe("server API", () => {
         slug: `api-auth-${createId().toLowerCase()}`,
         title: "Will auth fail?",
       },
+      headers: communityHeaders(),
       method: "POST",
     });
     const unknownUser = await requestJson("/markets", {
@@ -120,8 +132,11 @@ maybeDescribe("server API", () => {
   it("registers provider-neutral accounts through trusted bot auth", async () => {
     const missingToken = await requestJson("/accounts/register", {
       body: {
+        communityDisplayName: testCommunity.displayName,
+        communityProvider: testCommunity.provider,
         displayName: "Discord User",
         provider: "discord",
+        providerCommunityId: testCommunity.providerCommunityId,
         providerUserId: `discord-${createId()}`,
       },
       method: "POST",
@@ -131,9 +146,12 @@ maybeDescribe("server API", () => {
     const adminProviderUserId = `discord-admin-${createId()}`;
     const registered = await requestJson("/accounts/register", {
       body: {
+        communityDisplayName: testCommunity.displayName,
+        communityProvider: testCommunity.provider,
         displayName: "Discord User",
         handle,
         provider: "discord",
+        providerCommunityId: testCommunity.providerCommunityId,
         providerUserId,
       },
       headers: botHeaders(),
@@ -142,8 +160,11 @@ maybeDescribe("server API", () => {
     const registeredAdmin = await requestJson("/accounts/register", {
       body: {
         admin: true,
+        communityDisplayName: testCommunity.displayName,
+        communityProvider: testCommunity.provider,
         displayName: "Discord Admin",
         provider: "discord",
+        providerCommunityId: testCommunity.providerCommunityId,
         providerUserId: adminProviderUserId,
       },
       headers: botHeaders(),
@@ -175,7 +196,7 @@ maybeDescribe("server API", () => {
   it("creates draft markets, opens them by creator, reads without auth, and serializes bigints", async () => {
     const creator = await insertUser("creator");
     const market = await createMarket(creator.provider, creator.providerUserId);
-    const readDraft = await app.request(`/markets/${market.id}`);
+    const readDraft = await app.request(`/markets/${market.id}`, { headers: communityHeaders() });
     const openedResponse = await requestJson(`/markets/${market.id}/open`, {
       body: {
         closesAt: "2099-01-01T00:00:00.000Z",
@@ -224,6 +245,7 @@ maybeDescribe("server API", () => {
     const cancelMarket = await createMarket(canceler.provider, canceler.providerUserId);
 
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(100n),
       db: client.db,
       idempotencyKey: `server-test:${bettor.id}:resolve-fund`,
@@ -270,7 +292,9 @@ maybeDescribe("server API", () => {
     });
     const resolveBody = await jsonOk<ResolveMarketResponse>(resolveResponse);
     const cancelBody = await jsonOk<CancelMarketResponse>(cancelResponse);
-    const resolvedRead = await app.request(`/markets/${resolveMarket.id}`);
+    const resolvedRead = await app.request(`/markets/${resolveMarket.id}`, {
+      headers: communityHeaders(),
+    });
     const resolvedReadBody = await jsonOk<MarketResponse>(resolvedRead);
     const idempotentResolve = await requestJson(`/markets/${resolveMarket.id}/resolve`, {
       body: {
@@ -311,6 +335,7 @@ maybeDescribe("server API", () => {
     const market = await createMarket(creator.provider, creator.providerUserId);
 
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(100n),
       db: client.db,
       idempotencyKey: `server-test:${buyer.id}:fund`,
@@ -802,6 +827,7 @@ maybeDescribe("server API", () => {
     const user = await insertUser("portfolio");
 
     await creditRep({
+      communityId: DEFAULT_COMMUNITY_ID,
       amountMicro: repToMicro(12n),
       db: client.db,
       idempotencyKey: `server-test:${user.id}:portfolio-fund`,
@@ -810,9 +836,11 @@ maybeDescribe("server API", () => {
       userId: user.id,
     });
 
-    const portfolio = await app.request(`/users/${user.id}/portfolio`);
+    const portfolio = await app.request(`/users/${user.id}/portfolio`, {
+      headers: communityHeaders(),
+    });
     const portfolioBody = await jsonOk<AccountResponse>(portfolio);
-    const leaderboard = await app.request("/leaderboard?limit=5");
+    const leaderboard = await app.request("/leaderboard?limit=5", { headers: communityHeaders() });
     const leaderboardBody = await jsonOk<LeaderboardResponse>(leaderboard);
 
     expect(portfolio.status).toBe(200);
@@ -862,6 +890,27 @@ maybeDescribe("server API", () => {
       throw new Error("Failed to create test user");
     }
 
+    await client.db
+      .insert(schema.communities)
+      .values({
+        displayName: testCommunity.displayName,
+        id: DEFAULT_COMMUNITY_ID,
+        provider: testCommunity.provider,
+        providerCommunityId: testCommunity.providerCommunityId,
+        slug: "server-test-community",
+      })
+      .onConflictDoNothing();
+    await client.db
+      .insert(schema.communityMemberships)
+      .values({
+        communityId: DEFAULT_COMMUNITY_ID,
+        displayNameSnapshot: user.displayName,
+        id: `${user.id}:server-test-membership`,
+        providerMemberId: user.providerUserId,
+        userId: user.id,
+      })
+      .onConflictDoNothing();
+
     return user;
   }
 
@@ -877,6 +926,7 @@ maybeDescribe("server API", () => {
       body: JSON.stringify(input.body),
       headers: {
         "Content-Type": "application/json",
+        ...communityHeaders(),
         ...input.headers,
       },
       method: input.method,
@@ -886,14 +936,23 @@ maybeDescribe("server API", () => {
 
 function authHeaders(provider: string, providerUserId: string) {
   return {
+    ...communityHeaders(),
     "X-Provider": provider,
     "X-Provider-User-Id": providerUserId,
+  };
+}
+
+function communityHeaders() {
+  return {
+    "X-Community-Provider": testCommunity.provider,
+    "X-Provider-Community-Id": testCommunity.providerCommunityId,
   };
 }
 
 function botHeaders() {
   return {
     Authorization: "Bearer server-test-bot-token",
+    ...communityHeaders(),
   };
 }
 

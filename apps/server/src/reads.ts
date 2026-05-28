@@ -6,7 +6,7 @@ import { desc, eq, sql } from "drizzle-orm";
 
 import { ApiError } from "./http";
 
-export async function getPortfolio(input: { db: DbClient; userId: string }) {
+export async function getPortfolio(input: { communityId: string; db: DbClient; userId: string }) {
   const user = await getUserById(input);
 
   if (!user) {
@@ -24,7 +24,9 @@ export async function getPortfolio(input: { db: DbClient; userId: string }) {
       .from(schema.positions)
       .innerJoin(schema.contracts, eq(schema.contracts.id, schema.positions.contractId))
       .innerJoin(schema.markets, eq(schema.markets.id, schema.contracts.marketId))
-      .where(eq(schema.positions.userId, input.userId))
+      .where(
+        sql`${schema.positions.userId} = ${input.userId} and ${schema.markets.communityId} = ${input.communityId}`,
+      )
       .orderBy(desc(schema.positions.updatedAt), desc(schema.positions.id)),
   ]);
 
@@ -35,7 +37,7 @@ export async function getPortfolio(input: { db: DbClient; userId: string }) {
   };
 }
 
-export async function getLeaderboard(input: { db: DbClient; limit?: number }) {
+export async function getLeaderboard(input: { communityId: string; db: DbClient; limit?: number }) {
   const limit = input.limit ?? 50;
   const rows = await input.db
     .select({
@@ -51,7 +53,11 @@ export async function getLeaderboard(input: { db: DbClient; limit?: number }) {
     .from(schema.users)
     .leftJoin(
       schema.balances,
-      sql`${schema.balances.userId} = ${schema.users.id} and ${schema.balances.currency} = ${REP_CURRENCY}`,
+      sql`${schema.balances.userId} = ${schema.users.id} and ${schema.balances.currency} = ${REP_CURRENCY} and ${schema.balances.communityId} = ${input.communityId}`,
+    )
+    .innerJoin(
+      schema.communityMemberships,
+      sql`${schema.communityMemberships.userId} = ${schema.users.id} and ${schema.communityMemberships.communityId} = ${input.communityId}`,
     )
     .where(eq(schema.users.status, "active"))
     .orderBy(desc(sql`coalesce(${schema.balances.availableAmountMicro}, 0)`), desc(schema.users.id))
