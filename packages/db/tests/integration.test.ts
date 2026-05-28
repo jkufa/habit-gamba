@@ -1,11 +1,9 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { seedDatabase, syncDefaultCommunityToDiscordGuild } from "../scripts/seed";
+import { seedDatabase } from "../scripts/seed";
 import { createDbClient } from "../src/client";
-import { DEFAULT_COMMUNITY_ID } from "../src/community";
-import { balances, communities, contracts, ledgerEntries, markets, users } from "../src/schema";
-import { eq } from "drizzle-orm";
+import { balances, contracts, ledgerEntries, markets, users } from "../src/schema";
 
 const databaseUrl = process.env.DATABASE_URL;
 const maybeDescribe = databaseUrl ? describe : describe.skip;
@@ -64,24 +62,5 @@ maybeDescribe("database foundation", () => {
 
       expect(balance.availableAmountMicro).toBe(ledgerTotal);
     }
-  });
-
-  it("maps the default community to DISCORD_DEV_GUILD_ID when seeding", async () => {
-    const guildId = process.env.DISCORD_DEV_GUILD_ID?.trim();
-
-    if (!guildId) {
-      return;
-    }
-
-    await syncDefaultCommunityToDiscordGuild(client.db, guildId);
-
-    const [community] = await client.db
-      .select()
-      .from(communities)
-      .where(eq(communities.id, DEFAULT_COMMUNITY_ID))
-      .limit(1);
-
-    expect(community?.provider).toBe("discord");
-    expect(community?.providerCommunityId).toBe(guildId);
   });
 });

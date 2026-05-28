@@ -10,7 +10,7 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env src/migrate.ts",
-    "db:seed": "bun --env-file=../../.env --env-file=../../apps/bot/.env scripts/seed.ts",
+    "db:seed": "bun --env-file=../../.env scripts/seed.ts",
     "lint": "oxlint .",
     "test": "bun --env-file=../../.env vitest run --passWithNoTests"
   },

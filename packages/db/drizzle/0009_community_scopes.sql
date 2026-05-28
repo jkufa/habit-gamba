@@ -107,3 +107,15 @@ ALTER TABLE "user_roles" DROP CONSTRAINT IF EXISTS "user_roles_user_role_unique"
 ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_user_role_scope_unique" UNIQUE("user_id","role","scope_type","scope_id");
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "user_roles_scope_idx" ON "user_roles" USING btree ("scope_type","scope_id");
+--> statement-breakpoint
+UPDATE "communities"
+SET
+	"provider" = 'discord',
+	"provider_community_id" = '1505563251008737321',
+	"updated_at" = now()
+WHERE "id" = 'community_system_default'
+	AND EXISTS (
+		SELECT 1
+		FROM "balances"
+		WHERE "community_id" = 'community_system_default'
+	);
