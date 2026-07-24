@@ -15,6 +15,8 @@ import {
   type MarketNotificationIntent,
 } from "@habit-gamba/notification";
 
+import { sleep } from "./sleep";
+
 export const DISCORD_MARKET_NOTIFICATIONS_CONSUMER = "discord-market-notifications";
 export const DEFAULT_EVENT_WORKER_POLL_INTERVAL_MS = 5_000;
 export const DEFAULT_EVENT_WORKER_LOCK_TTL_MS = 60_000;
@@ -250,23 +252,5 @@ async function markFailedDelivery(input: {
       now: input.now,
     }),
     now: input.now,
-  });
-}
-
-function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    const timeout = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timeout);
-        resolve();
-      },
-      { once: true },
-    );
   });
 }
